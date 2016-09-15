@@ -111,7 +111,7 @@ class intervals():
 
 
 
-def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization="logistic"):
+def test_intervals(n=100, p=10, s=3, reference="truth", randomization="logistic"):
 
     tau = 1.
     data_instance = instance(n, p, s)
@@ -129,8 +129,8 @@ def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization=
 
     if lam < 0:
         return None
-    active_set = np.where(active)[0]
 
+    active_set = np.where(active)[0]
     if not set(nonzero).issubset(active_set):
         return None
 
@@ -138,7 +138,6 @@ def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization=
     nactive = np.sum(active)
 
     param_vec = true_beta[active]
-    print "true vector", param_vec
 
     if reference=="selective MLE":
         est = estimation(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
@@ -177,7 +176,6 @@ def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization=
     return np.copy(pvalues_ref), np.copy(pvalues_param), ncovered, nparam
 
 
-
 if __name__ == "__main__":
 
     P_param_all = []
@@ -187,12 +185,12 @@ if __name__ == "__main__":
     ncovered_total = 0
     nparams_total = 0
 
-    for i in range(100):
+    for i in range(20):
         print "\n"
         print "iteration", i
         pvals_ints = test_intervals()
         if pvals_ints is not None:
-            #print pvalues
+            # print pvalues
             pvalues_ref, pvalues_param, ncovered, nparam = pvals_ints
             P_ref_all.extend(pvalues_ref)
             P_param_all.extend(pvalues_param)

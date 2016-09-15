@@ -21,7 +21,7 @@ def selection(X, y, random_Z, randomization_scale=1, sigma=1):
     # initial solution
 
     problem = rr.simple_problem(loss, penalty)
-    random_term = rr.identity_quadratic(epsilon, 0, randomization_scale * random_Z, 0)
+    random_term = rr.identity_quadratic(epsilon, 0, -randomization_scale * random_Z, 0)
     solve_args = {'tol': 1.e-10, 'min_its': 100, 'max_its': 500}
 
 
@@ -33,17 +33,18 @@ def selection(X, y, random_Z, randomization_scale=1, sigma=1):
     initial_grad = loss.smooth_objective(initial_soln, mode='grad')
     betaE, cube = penalty.setup_sampling(initial_grad,
                                          initial_soln,
-                                         random_Z,
+                                         -random_Z,
                                          epsilon)
-    #print initial_soln
     #active = penalty.active_set
+    subgradient = -(initial_grad+epsilon*initial_soln-randomization_scale*random_Z)
+    cube = subgradient[~active]/lam
     return lam, epsilon, active, betaE, cube, initial_soln
 
 
 
 def test_lasso(X, y, nonzero, sigma, lam, epsilon, active, betaE, cube, random_Z,
                beta_reference,
-               randomization_distribution, Langevin_steps=10000, burning=2000):
+               randomization_distribution, Langevin_steps=10000, burning=0):
 
     n, p = X.shape
     step_size = 1./p
