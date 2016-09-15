@@ -5,13 +5,38 @@ from selection.sampling.randomized.tests.test_lasso_fixedX_saturated import test
 from selection.sampling.randomized.intervals.estimation import estimation, instance
 
 
-class intervals(estimation):
+class intervals():
 
     def __init__(self, X, y, active, betaE, cube, epsilon, lam, sigma, tau):
-        estimation.__init__(self, X, y, active, betaE, cube, epsilon, lam, sigma, tau)
-        estimation.compute_mle_all(self)
+
+        (self.X, self.y,
+         self.active,
+         self.betaE, self.cube,
+         self.epsilon,
+         self.lam,
+         self.sigma,
+         self.tau) = (X, y,
+                      active,
+                      betaE, cube,
+                      epsilon,
+                      lam,
+                      sigma,
+                      tau)
+
+        self.sigma_sq = self.sigma ** 2
+        self.n, self.p = X.shape
+        self.nactive = np.sum(active)
+        self.ninactive = self.p - self.nactive
+        self.XE_pinv = np.linalg.pinv(self.X[:, self.active])
+
+        self.eta_norm_sq = np.zeros(self.nactive)
+        for j in range(self.nactive):
+            eta = self.XE_pinv[j, :]
+            self.eta_norm_sq[j] = np.linalg.norm(eta) ** 2
+
         self.grid_length = 400
         self.param_values_at_grid = np.linspace(-10, 10, num=self.grid_length)
+
 
 
     def setup_samples(self, ref_vec, samples, observed, variances):
@@ -25,22 +50,12 @@ class intervals(estimation):
 
         self.nsamples = self.samples.shape[1]
 
+
     def empirical_exp(self, j, param):
         ref = self.ref_vec[j]
         factor = np.true_divide(param-ref, self.eta_norm_sq[j]*self.sigma_sq)
         tilted_samples = np.exp(self.samples[j,:]*factor)
         return np.sum(tilted_samples)/float(self.nsamples)
-
-    # def log_ratio_selection_prob(self, j, param):
-    #     ref = self.ref_vec[j]
-    #     Sigma_inv_mu_param, Sigma_inv_mu_ref = self.Sigma_inv_mu[j].copy(), self.Sigma_inv_mu[j].copy()
-    #     Sigma_inv_mu_param[0] += param / (self.eta_norm_sq[j] * self.sigma_sq)
-    #     mu_param = np.dot(self.Sigma_full[j], Sigma_inv_mu_param)
-    #     Sigma_inv_mu_ref[0] += ref / (self.eta_norm_sq[j] * self.sigma_sq)
-    #     mu_ref = np.dot(self.Sigma_full[j], Sigma_inv_mu_ref)
-    #     log_gaussian_part = (-np.inner(mu_param, Sigma_inv_mu_param)+np.inner(mu_ref, Sigma_inv_mu_ref))/float(2)
-    #     print "difference", log_gaussian_part + np.true_divide(param**2-(ref**2), 2*self.sigma_sq*self.eta_norm_sq)
-    #     return log_gaussian_part*np.log(self.empirical_exp(j, param))
 
 
     def pvalue_by_tilting(self, j, param):
@@ -53,13 +68,13 @@ class intervals(estimation):
         return np.clip(np.sum(np.multiply(indicator, LR)) / float(self.nsamples), 0, 1)
 
 
-    def pvalues_param(self, param_vec):
+    def pvalues_param_all(self, param_vec):
         pvalues = []
         for j in range(self.nactive):
             pvalues.append(self.pvalue_by_tilting(j, param_vec[j]))
         return pvalues
 
-    def pvalues_ref(self):
+    def pvalues_ref_all(self):
         pvalues = []
         for j in range(self.nactive):
             indicator = np.array(self.samples[j, :] < self.observed[j], dtype=int)
@@ -82,7 +97,7 @@ class intervals(estimation):
             return self.L, self.U
 
     def construct_intervals_all(self, truth_vec, alpha=0.1):
-        coverage = 0
+        ncovered = 0
         nparam = 0
         for j in range(self.nactive):
             LU = self.construct_intervals(j, alpha=alpha)
@@ -91,25 +106,37 @@ class intervals(estimation):
                 print "interval", L, U
                 nparam +=1
                 if (L <= truth_vec[j]) and (U >= truth_vec[j]):
-                     coverage +=1
-        return coverage, nparam
+                     ncovered +=1
+        return ncovered, nparam
 
 
-def test_intervals(n=100, p=10, s=0):
+
+def test_intervals(n=100, p=10, s=3, reference="selective MLE"):
 
     tau = 1.
     data_instance = instance(n, p, s)
     X, y, true_beta, nonzero, sigma = data_instance.generate_response()
+    y0 = y.copy()
     random_Z = np.random.standard_normal(p)
     lam, epsilon, active, betaE, cube, initial_soln = selection(X,y, random_Z)
+
     if lam < 0:
         return None
     int_class = intervals(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
+    nactive = np.sum(active)
 
-    ref_vec = int_class.mle.copy()
-    param_vec = np.zeros(np.sum(active))
+    if reference=="selective MLE":
+        est = estimation(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
+        ref_vec = est.compute_mle_all()
+    else:
+        if reference=="unpenalized MLE":
+            ref_vec = np.dot(int_class.XE_pinv.T, y0)
+        else:
+            raise ValueError("Wrong reference")
 
-    #ref_vec = np.ones(np.sum(active))/2
+    param_vec = true_beta[active]
+    print "true vector", param_vec
+    print "reference", ref_vec
 
     # running the Langevin sampler
     _, _, all_observed, all_variances, all_samples = test_lasso(X, y, nonzero, sigma, lam, epsilon, active, betaE,
@@ -117,49 +144,63 @@ def test_intervals(n=100, p=10, s=0):
                                                                 randomization_distribution="normal",
                                                                 Langevin_steps=20000, burning=2000)
 
+
     int_class.setup_samples(ref_vec.copy(), all_samples, all_observed, all_variances)
 
-    pvalues_ref = int_class.pvalues_ref()
-    pvalues_param = int_class.pvalues_param(param_vec)
+    pvalues_ref = int_class.pvalues_ref_all()
+    pvalues_param = int_class.pvalues_param_all(param_vec)
 
-    coverage, nparam = int_class.construct_intervals_all(true_beta)
+    #pvalues_param = int_class.pvalue_by_tilting(0, param_vec[0])
+    ncovered, nparam = 0, 0
+    #coverage, nparam = int_class.construct_intervals_all(param_vec)
 
     print "pvalue(s) at the truth", pvalues_param
-    return pvalues_ref, pvalues_param, coverage, nparam
+    return np.copy(pvalues_ref), np.copy(pvalues_param), ncovered, nparam
 
 
 
 if __name__ == "__main__":
+
     P_param_all = []
     P_ref_all = []
-    ncovered = 0
-    nparams = 0
-    for i in range(200):
+    P_param_first = []
+    P_ref_first = []
+    ncovered_total = 0
+    nparams_total = 0
+
+    for i in range(50):
+        print "\n"
         print "iteration", i
         pvals_ints = test_intervals()
         if pvals_ints is not None:
             #print pvalues
-            P_ref_all.extend(pvals_ints[0])
-            P_param_all.extend(pvals_ints[1])
-            coverage = pvals_ints[2]
-            if coverage is not None:
-                ncovered += pvals_ints[2]
-                nparams += pvals_ints[3]
+            pvalues_ref, pvalues_param, ncovered, nparam = pvals_ints
+            P_ref_all.extend(pvalues_ref)
+            P_param_all.extend(pvalues_param)
+            P_ref_first.append(pvalues_ref[0])
+            P_param_first.append(pvalues_param[0])
+
+            if ncovered is not None:
+                ncovered_total += ncovered
+                nparams_total += nparam
 
 
-    print "number of intervals", nparams
-    print "coverage", ncovered/float(nparams)
+    #print "number of intervals", nparams
+    #print "coverage", ncovered/float(nparams)
 
 
 
     from matplotlib import pyplot as plt
     import statsmodels.api as sm
 
-    fig = plt.figure()
-    plot_pvalues0 = fig.add_subplot(121)
-    plot_pvalues1 = fig.add_subplot(122)
 
-    P_param_all = np.asarray(P_param_all, dtype=np.float32)
+    fig = plt.figure()
+    plot_pvalues0 = fig.add_subplot(221)
+    plot_pvalues1 = fig.add_subplot(222)
+    plot_pvalues2 = fig.add_subplot(223)
+    plot_pvalues3 = fig.add_subplot(224)
+
+
     ecdf = sm.distributions.ECDF(P_param_all)
     x = np.linspace(min(P_param_all), max(P_param_all))
     y = ecdf(x)
@@ -169,7 +210,6 @@ if __name__ == "__main__":
     plot_pvalues0.set_xlim([0, 1])
     plot_pvalues0.set_ylim([0, 1])
 
-    P1 = np.asarray(P_ref_all, dtype=np.float32)
     ecdf1 = sm.distributions.ECDF(P_ref_all)
     x1 = np.linspace(min(P_ref_all), max(P_ref_all))
     y1 = ecdf1(x1)
@@ -178,6 +218,25 @@ if __name__ == "__main__":
     plot_pvalues1.set_title("P values at the reference")
     plot_pvalues1.set_xlim([0, 1])
     plot_pvalues1.set_ylim([0, 1])
+
+
+    ecdf2 = sm.distributions.ECDF(P_ref_first)
+    x2 = np.linspace(min(P_ref_first), max(P_ref_first))
+    y2 = ecdf2(x2)
+    plot_pvalues2.plot(x2, y2, '-o', lw=2)
+    plot_pvalues2.plot([0, 1], [0, 1], 'k-', lw=2)
+    plot_pvalues2.set_title("First P value at the reference")
+    plot_pvalues2.set_xlim([0, 1])
+    plot_pvalues2.set_ylim([0, 1])
+
+    ecdf3 = sm.distributions.ECDF(P_param_first)
+    x3 = np.linspace(min(P_param_first), max(P_param_first))
+    y3 = ecdf3(x3)
+    plot_pvalues3.plot(x3, y3, '-o', lw=2)
+    plot_pvalues3.plot([0, 1], [0, 1], 'k-', lw=2)
+    plot_pvalues3.set_title("First P value at the truth")
+    plot_pvalues3.set_xlim([0, 1])
+    plot_pvalues3.set_ylim([0, 1])
 
     plt.show()
     plt.savefig("P values from the intervals file.png")

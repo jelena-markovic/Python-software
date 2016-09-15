@@ -96,10 +96,24 @@ class umvu(estimation):
         return (np.linalg.norm(self.unbiased-true_vec))**2, (np.linalg.norm(self.umvu-true_vec))**2
 
 
-def MSE_three(snr=5, n=100, p=10, s=0):
+    def unpenalized_mle_all(self):
+        self.unpenalized_mle = np.zeros(self.nactive)
+        for j in range(self.nactive):
+            self.unpenalized_mle[j] = np.inner(self.XE_pinv[j, :], self.y)
 
-    ninstance = 5
+        return self.unpenalized_mle
+
+    def unpenalized_mle_mse(self, true_vec):
+        return np.linalg.norm(self.unpenalized_mle-true_vec) **2
+
+
+
+def MSE_three(snr, n=100, p=10, s=1):
+
+    ninstance = 3
     total_mse_mle, total_mse_unbiased, total_mse_umvu = 0, 0, 0
+    total_mse_unpenalized_mle = 0
+
     nvalid_instance = 0
     data_instance = instance(n, p, s, snr)
     tau = 1.
@@ -117,31 +131,40 @@ def MSE_three(snr=5, n=100, p=10, s=0):
             true_vec = true_beta[active]
 
             print "true vector", true_vec
-            print "MLE", est.mle, "Unbiased", est.unbiased, "UMVU", est.umvu
-            total_mse_mle += est.mse_mle(true_vec)
+            print "selective MLE", est.mle, "Unbiased", est.unbiased, "UMVU", est.umvu
 
+            est.unpenalized_mle_all()
+            print "unpenalized MLE", est.unpenalized_mle
+            total_mse_unpenalized_mle += est.unpenalized_mle_mse(true_vec)
+
+            total_mse_mle += est.mse_mle(true_vec)
             mse = est.mse_unbiased(true_vec)
             total_mse_unbiased += mse[0]
             total_mse_umvu += mse[1]
             nvalid_instance +=np.sum(active)
 
     if nvalid_instance > 0:
-        return total_mse_mle/float(nvalid_instance), total_mse_unbiased/float(nvalid_instance), total_mse_umvu/float(nvalid_instance)
+        return total_mse_mle/float(nvalid_instance), total_mse_unbiased/float(nvalid_instance),\
+               total_mse_umvu/float(nvalid_instance),\
+               total_mse_unpenalized_mle/float(nvalid_instance)
 
 
 def test_estimation_three():
-    snr_seq = np.linspace(-10, 10, num=50)
+    snr_seq = np.linspace(-10, 10, num=10)
     filter = np.zeros(snr_seq.shape[0], dtype=bool)
     mse_mle_seq, mse_unbiased_seq, mse_umvu_seq = [], [], []
 
+    mse_unpenalized_mle_seq = []
+
     for i in range(snr_seq.shape[0]):
             print "parameter value", snr_seq[i]
-            mse = MSE_three(snr_seq[i])
+            mse = MSE_three(snr=snr_seq[i])
             if mse is not None:
-                mse_mle, mse_unbiased, mse_umvu = mse
+                mse_mle, mse_unbiased, mse_umvu, mse_unpenalized_mle = mse
                 mse_mle_seq.append(mse_mle)
                 mse_unbiased_seq.append(mse_unbiased)
                 mse_umvu_seq.append(mse_umvu)
+                mse_unpenalized_mle_seq.append(mse_unpenalized_mle)
                 filter[i] = True
 
     plt.clf()
@@ -150,6 +173,8 @@ def test_estimation_three():
     ax.plot(snr_seq[filter], mse_mle_seq, label = "MLE", linestyle=':', marker='o')
     ax.plot(snr_seq[filter], mse_unbiased_seq, label = "Unbiased")
     ax.plot(snr_seq[filter], mse_umvu_seq, label ="UMVU")
+
+    ax.plot(snr_seq[filter], mse_unpenalized_mle_seq, label="Unpenalized MLE")
 
     legend = ax.legend(loc='upper center', shadow=True)
     frame = legend.get_frame()
