@@ -111,39 +111,58 @@ class intervals():
 
 
 
-def test_intervals(n=100, p=10, s=3, reference="selective MLE"):
+def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization="logistic"):
 
     tau = 1.
     data_instance = instance(n, p, s)
     X, y, true_beta, nonzero, sigma = data_instance.generate_response()
     y0 = y.copy()
-    random_Z = np.random.standard_normal(p)
+
+    if randomization=="logistic":
+        random_Z = np.random.logistic(loc=0, scale=1, size =p)
+    elif randomization =="normal":
+            random_Z = np.random.standard_normal(p)
+    else:
+        raise ValueError("Wrong randomization")
+
     lam, epsilon, active, betaE, cube, initial_soln = selection(X,y, random_Z)
 
     if lam < 0:
         return None
+    active_set = np.where(active)[0]
+
+    if not set(nonzero).issubset(active_set):
+        return None
+
     int_class = intervals(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
     nactive = np.sum(active)
+
+    param_vec = true_beta[active]
+    print "true vector", param_vec
 
     if reference=="selective MLE":
         est = estimation(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
         ref_vec = est.compute_mle_all()
+    elif reference=="unpenalized MLE":
+            ref_vec = np.dot(int_class.XE_pinv, y0)
+            # ref_vec = np.zeros(nactive)
+            # for j in range(nactive):
+            #    ref_vec[j] = np.inner(int_class.XE_pinv[j, :], y0)
+    elif reference=="truth":
+        ref_vec = true_beta[active]
     else:
-        if reference=="unpenalized MLE":
-            ref_vec = np.dot(int_class.XE_pinv.T, y0)
-        else:
-            raise ValueError("Wrong reference")
+        raise ValueError("Wrong reference")
 
-    param_vec = true_beta[active]
-    print "true vector", param_vec
-    print "reference", ref_vec
+
 
     # running the Langevin sampler
     _, _, all_observed, all_variances, all_samples = test_lasso(X, y, nonzero, sigma, lam, epsilon, active, betaE,
                                                                 cube, random_Z, beta_reference=ref_vec.copy(),
-                                                                randomization_distribution="normal",
+                                                                randomization_distribution=randomization,
                                                                 Langevin_steps=20000, burning=2000)
 
+    print "true vector", param_vec
+    print "reference", ref_vec
 
     int_class.setup_samples(ref_vec.copy(), all_samples, all_observed, all_variances)
 
@@ -168,7 +187,7 @@ if __name__ == "__main__":
     ncovered_total = 0
     nparams_total = 0
 
-    for i in range(50):
+    for i in range(100):
         print "\n"
         print "iteration", i
         pvals_ints = test_intervals()
