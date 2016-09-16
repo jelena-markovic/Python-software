@@ -7,25 +7,19 @@ from selection.sampling.randomized.intervals.estimation import estimation, insta
 
 class intervals():
 
-    def __init__(self, X, y, active, betaE, cube, epsilon, lam, sigma, tau):
+    def __init__(self, X, y, active, sigma, tau=1):
 
         (self.X, self.y,
          self.active,
-         self.betaE, self.cube,
-         self.epsilon,
-         self.lam,
          self.sigma,
          self.tau) = (X, y,
                       active,
-                      betaE, cube,
-                      epsilon,
-                      lam,
                       sigma,
                       tau)
 
         self.sigma_sq = self.sigma ** 2
         self.n, self.p = X.shape
-        self.nactive = np.sum(active)
+        self.nactive = np.sum(self.active)
         self.ninactive = self.p - self.nactive
         self.XE_pinv = np.linalg.pinv(self.X[:, self.active])
 
@@ -111,7 +105,7 @@ class intervals():
 
 
 
-def test_intervals(n=100, p=10, s=3, reference="truth", randomization="logistic"):
+def test_intervals(n=100, p=10, s=3, reference="unpenalized MLE", randomization="logistic"):
 
     tau = 1.
     data_instance = instance(n, p, s)
@@ -134,7 +128,7 @@ def test_intervals(n=100, p=10, s=3, reference="truth", randomization="logistic"
     if not set(nonzero).issubset(active_set):
         return None
 
-    int_class = intervals(X, y, active, betaE, cube, epsilon, lam, sigma, tau)
+    int_class = intervals(X, y, active, sigma, tau)
     nactive = np.sum(active)
 
     param_vec = true_beta[active]
@@ -153,12 +147,11 @@ def test_intervals(n=100, p=10, s=3, reference="truth", randomization="logistic"
         raise ValueError("Wrong reference")
 
 
-
     # running the Langevin sampler
     _, _, all_observed, all_variances, all_samples = test_lasso(X, y, nonzero, sigma, lam, epsilon, active, betaE,
                                                                 cube, random_Z, beta_reference=ref_vec.copy(),
                                                                 randomization_distribution=randomization,
-                                                                Langevin_steps=20000, burning=2000)
+                                                                Langevin_steps=20000, burning=0)
 
     print "true vector", param_vec
     print "reference", ref_vec
@@ -168,12 +161,11 @@ def test_intervals(n=100, p=10, s=3, reference="truth", randomization="logistic"
     pvalues_ref = int_class.pvalues_ref_all()
     pvalues_param = int_class.pvalues_param_all(param_vec)
 
-    #pvalues_param = int_class.pvalue_by_tilting(0, param_vec[0])
-    ncovered, nparam = 0, 0
-    #coverage, nparam = int_class.construct_intervals_all(param_vec)
+    ncovered, nparam = int_class.construct_intervals_all(param_vec)
 
     print "pvalue(s) at the truth", pvalues_param
     return np.copy(pvalues_ref), np.copy(pvalues_param), ncovered, nparam
+
 
 
 if __name__ == "__main__":
@@ -185,7 +177,7 @@ if __name__ == "__main__":
     ncovered_total = 0
     nparams_total = 0
 
-    for i in range(20):
+    for i in range(50):
         print "\n"
         print "iteration", i
         pvals_ints = test_intervals()
@@ -202,8 +194,8 @@ if __name__ == "__main__":
                 nparams_total += nparam
 
 
-    #print "number of intervals", nparams
-    #print "coverage", ncovered/float(nparams)
+    print "number of intervals", nparams_total
+    print "coverage", ncovered_total/float(nparams_total)
 
 
 
@@ -227,6 +219,7 @@ if __name__ == "__main__":
     plot_pvalues0.set_xlim([0, 1])
     plot_pvalues0.set_ylim([0, 1])
 
+
     ecdf1 = sm.distributions.ECDF(P_ref_all)
     x1 = np.linspace(min(P_ref_all), max(P_ref_all))
     y1 = ecdf1(x1)
@@ -245,6 +238,7 @@ if __name__ == "__main__":
     plot_pvalues2.set_title("First P value at the reference")
     plot_pvalues2.set_xlim([0, 1])
     plot_pvalues2.set_ylim([0, 1])
+
 
     ecdf3 = sm.distributions.ECDF(P_param_first)
     x3 = np.linspace(min(P_param_first), max(P_param_first))
