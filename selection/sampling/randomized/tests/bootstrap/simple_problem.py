@@ -4,14 +4,24 @@ from scipy.stats import laplace, probplot, uniform
 from matplotlib import pyplot as plt
 from selection.sampling.langevin import projected_langevin
 from selection.distributions.discrete_family import discrete_family
+import statsmodels.api as sm
 
 
-def test_simple_problem(n=100, randomization_dist = "logistic", threshold =1,
+def test_simple_problem(noise = "normal", n=100, randomization_dist = "logistic", threshold =1,
                         weights="neutral",
                         Langevin_steps=10000, burning = 0):
     step_size = 1./n
+    truth = 0
+    if noise == "normal":
+        y = np.random.standard_normal(n) + truth
+    elif noise=="laplace":
+        y = np.random.laplace(loc=0, scale=1. / np.sqrt(2), size=n) + truth
+    elif noise == "uniform":
+        y = np.random.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=n)+truth
+    elif noise == "logistic":
+        np.random.logistic(loc=0, scale=np.sqrt(3) / np.pi, size=n)
 
-    y = np.random.standard_normal(n)
+
     obs = np.sqrt(n)*np.mean(y)
 
     if randomization_dist=="logistic":
@@ -45,9 +55,9 @@ def test_simple_problem(n=100, randomization_dist = "logistic", threshold =1,
         if weights =="neutral":
             gradient = - np.inner(state, y_cs) * y_cs
 
-        omega = -np.inner(y_cs, state) + threshold
+        omega = -np.sqrt(n)*truth-np.inner(y_cs, state) + threshold
         if randomization_dist=="logistic":
-            randomization_derivative = -1./(1+np.exp(-omega))
+            randomization_derivative = -1./(1+np.exp(-omega)) # derivative of log\bar{G}(omega) wrt omega
 
         gradient -= y_cs * randomization_derivative
 
@@ -71,6 +81,7 @@ def test_simple_problem(n=100, randomization_dist = "logistic", threshold =1,
     pop = [np.inner(y_cs, alphas[i,:]) for i in range(alphas.shape[0])]
 
     fam = discrete_family(pop, np.ones_like(pop))
+    obs -= np.sqrt(n)*truth
     pval = fam.cdf(0, obs)
     pval = 2 * min(pval, 1 - pval)
     print "observed: ", obs, "p value: ", pval
@@ -80,23 +91,40 @@ def test_simple_problem(n=100, randomization_dist = "logistic", threshold =1,
 if __name__ == "__main__":
 
     np.random.seed(1)
-    plt.figure()
-    plt.ion()
-    P0 = []
-    for i in range(500):
-        print "iteration", i
-        p0 = test_simple_problem()
-        if p0>-1:
-            P0.append(p0)
-        plt.clf()
-        plt.xlim([0, 1])
-        plt.ylim([0, 1])
-        probplot(P0, dist=uniform, sparams=(0, 1), plot=plt,fit=False)
-        plt.plot([0, 1], color='k', linestyle='-', linewidth=2)
-        plt.pause(0.01)
+    fig = plt.figure()
+    fig.suptitle('Pivots for the simple example')
 
-    print "done! mean: ", np.mean(P0), "std: ", np.std(P0)
+    for noise in ['normal', 'laplace', 'uniform', 'logistic']:
+        P = []
+        for i in range(100):
+            print i
+            pval = test_simple_problem(noise=noise)
+            if pval>-1:
+                P.append(pval)
+        print noise
 
-    while True:
-        plt.pause(0.05)
+        # generates one plot for the p-values for all types of errors
+        if (noise == 'normal'):
+            plot1 = fig.add_subplot(221)
+            plot1.set_title('Normal errors')
+        if (noise == 'laplace'):
+            plot1 = fig.add_subplot(222)
+            plot1.set_title('Laplace errors')
+        if (noise == 'uniform'):
+            plot1 = fig.add_subplot(223)
+            plot1.set_title('Uniform errors')
+        if (noise == 'logistic'):
+            plot1 = fig.add_subplot(224)
+            plot1.set_title('Logistic errors')
+
+        ecdf = sm.distributions.ECDF(P)
+        x = np.linspace(min(P), max(P))
+        y = ecdf(x)
+        plt.plot(x, y, lw=2)
+        plt.plot([0, 1], [0, 1], 'k-', lw=1)
+    # plt.savefig('foo.pdf')
+    plt.show()
+
+
+
 
