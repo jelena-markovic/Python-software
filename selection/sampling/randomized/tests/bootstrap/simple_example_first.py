@@ -9,7 +9,7 @@ import statsmodels.api as sm
 n = 500
 kappa = 0.8
 #sd = 1
-truth = 0
+truth = -1./np.sqrt(n)
 
 def logistic(n=1):
     U = np.random.sample(n)
@@ -62,7 +62,7 @@ def simulation(n, noise='normal', threshold=2, nsample=5000, coverage=0.90):
         if (noise=='uniform'): #Unif(a,b) has variance (b-a)^2/12
             S = np.random.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=n)+truth
         if (noise=='logistic'): # Logistic(loc, scale) has variance scale^2*pi^2/3=1
-            S = np.random.logistic(loc=0, scale=np.sqrt(3)/np.pi, size=n)
+            S = np.random.logistic(loc=0, scale=np.sqrt(3)/np.pi, size=n)+truth
         if selection_event(S, threshold):
             break
 
@@ -91,7 +91,7 @@ def simulation(n, noise='normal', threshold=2, nsample=5000, coverage=0.90):
 
 random.seed(1)
 fig=plt.figure()
-fig.suptitle('P values for the simple example')
+fig.suptitle('Pivots for the simple example using standard bootstrap')
 
 
 for noise in ['normal','laplace', 'uniform','logistic']:
@@ -134,7 +134,7 @@ for noise in ['normal','laplace', 'uniform','logistic']:
     ecdf = sm.distributions.ECDF(P)
     x = np.linspace(min(P), max(P))
     y = ecdf(x)
-    plt.plot(x, y, lw=2)
+    plt.plot(x, y, '-o', lw=2)
     plt.plot([0,1], [0,1], 'k-', lw=1)
 #plt.savefig('foo.pdf')
 plt.show()

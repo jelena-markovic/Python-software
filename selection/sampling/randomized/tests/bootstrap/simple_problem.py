@@ -9,9 +9,10 @@ import statsmodels.api as sm
 
 def test_simple_problem(noise = "normal", n=100, randomization_dist = "logistic", threshold =1,
                         weights="neutral",
-                        Langevin_steps=10000, burning = 1000):
-    step_size = 1./n
-    truth = -0.5/np.sqrt(n)
+                        Langevin_steps=8000, burning = 1000):
+
+    step_size = 10./n
+    truth = -1./np.sqrt(n)
     if noise == "normal":
         y = np.random.standard_normal(n) + truth
     elif noise=="laplace":
@@ -97,9 +98,9 @@ if __name__ == "__main__":
     for noise in ['normal', 'laplace', 'uniform', 'logistic']:
         P = []
         for i in range(1000):
-            print i
             pval = test_simple_problem(noise=noise)
             if pval>-1:
+                print i
                 P.append(pval)
         print noise
 
