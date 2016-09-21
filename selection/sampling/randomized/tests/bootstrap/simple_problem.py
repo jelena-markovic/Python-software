@@ -9,9 +9,9 @@ import statsmodels.api as sm
 
 def test_simple_problem(noise = "normal", n=100, randomization_dist = "logistic", threshold =1,
                         weights="neutral",
-                        Langevin_steps=10000, burning = 0):
+                        Langevin_steps=10000, burning = 1000):
     step_size = 1./n
-    truth = 0
+    truth = -0.5/np.sqrt(n)
     if noise == "normal":
         y = np.random.standard_normal(n) + truth
     elif noise=="laplace":
@@ -19,7 +19,7 @@ def test_simple_problem(noise = "normal", n=100, randomization_dist = "logistic"
     elif noise == "uniform":
         y = np.random.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=n)+truth
     elif noise == "logistic":
-        np.random.logistic(loc=0, scale=np.sqrt(3) / np.pi, size=n)
+        y = np.random.logistic(loc=0, scale=np.sqrt(3) / np.pi, size=n)+truth
 
 
     obs = np.sqrt(n)*np.mean(y)
@@ -92,11 +92,11 @@ if __name__ == "__main__":
 
     np.random.seed(1)
     fig = plt.figure()
-    fig.suptitle('Pivots for the simple example')
+    fig.suptitle('Pivots for the simple example wild bootstrap')
 
     for noise in ['normal', 'laplace', 'uniform', 'logistic']:
         P = []
-        for i in range(100):
+        for i in range(1000):
             print i
             pval = test_simple_problem(noise=noise)
             if pval>-1:
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         ecdf = sm.distributions.ECDF(P)
         x = np.linspace(min(P), max(P))
         y = ecdf(x)
-        plt.plot(x, y, lw=2)
+        plt.plot(x, y, '-o', lw=2)
         plt.plot([0, 1], [0, 1], 'k-', lw=1)
     # plt.savefig('foo.pdf')
     plt.show()
