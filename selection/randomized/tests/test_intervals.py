@@ -4,7 +4,7 @@ import numpy as np
 import regreg.api as rr
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
-from selection.tests.instance import logistic_instance
+from selection.tests.instance import logistic_instance, gaussian_instance
 from selection.tests.decorators import wait_for_return_value, set_seed_iftrue, set_sampling_params_iftrue, register_report
 import selection.tests.reports as reports
 
@@ -29,8 +29,10 @@ def test_intervals(s=0,
                    burnin=2000, 
                    bootstrap=True,
                    intervals='new',
+                   loss = 'gaussian',
                    randomizer = 'laplace',
                    solve_args={'min_its':50, 'tol':1.e-10}):
+
     if randomizer =='laplace':
         randomizer = randomization.laplace((p,), scale=1.)
     elif randomizer=='gaussian':
@@ -39,14 +41,19 @@ def test_intervals(s=0,
         randomizer = randomization.logistic((p,), scale=1.)
 
     #randomizer =randomization.logistic((p,), scale=1.)
-    X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+    if loss == "gaussian":
+        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
+        lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma
+        loss = rr.glm.gaussian(X, y)
+    elif loss == "logistic":
+        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+        loss = rr.glm.logistic(X, y)
+        lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
     nonzero = np.where(beta)[0]
 
-    loss = rr.glm.logistic(X, y)
     epsilon = 1.
 
-    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
     W = np.ones(p)*lam
     W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
@@ -129,7 +136,7 @@ def test_intervals(s=0,
 
 def report(niter=10, **kwargs):
 
-    kwargs= {'s': 3, 'n': 300, 'p': 20, 'snr': 7, 'bootstrap': False, 'randomizer':'gaussian'}
+    kwargs= {'s': 3, 'n': 300, 'p': 50, 'snr': 7, 'bootstrap': False, 'randomizer':'gaussian'}
     intervals_report = reports.reports['test_intervals']
     CLT_runs = reports.collect_multiple_runs(intervals_report['test'],
                                              intervals_report['columns'],
@@ -151,5 +158,30 @@ def report(niter=10, **kwargs):
     fig = reports.pivot_plot_2in1(bootstrap_runs, color='g', label='Bootstrap', fig=fig)
     fig.savefig('intervals_pivots.pdf') # will have both bootstrap and CLT on plot
 
+def report_ci(niter=10, **kwargs):
+
+    kwargs = {'s': 3, 'n': 300, 'p': 20, 'snr': 7, 'bootstrap': False, 'randomizer':'gaussian',
+                    'loss':'gaussian', 'intervals':'new'}
+    intervals_report = reports.reports['test_intervals']
+    ci_new_runs = reports.collect_multiple_runs(intervals_report['test'],
+                                             intervals_report['columns'],
+                                             niter,
+                                             reports.summarize_all,
+                                             **kwargs)
+
+    #fig = reports.pivot_plot(CLT_runs, color='b', label='CLT')
+    fig = reports.pivot_plot_2in1(ci_new_runs, color='b', label='CI tilt data and opt')
+
+    kwargs['intervals'] = 'old'
+    ci_old_runs = reports.collect_multiple_runs(intervals_report['test'],
+                                                   intervals_report['columns'],
+                                                   niter,
+                                                   reports.summarize_all,
+                                                   **kwargs)
+
+    #fig = reports.pivot_plot(bootstrap_runs, color='g', label='Bootstrap', fig=fig)
+    fig = reports.pivot_plot_2in1(ci_old_runs, color='g', label='CLT tilt data', fig=fig)
+    fig.savefig('ci.pdf') # will have both bootstrap and CLT on plot
+
 if __name__== '__main__':
-    report()
+    report_ci()
