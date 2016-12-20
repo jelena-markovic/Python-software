@@ -15,16 +15,16 @@ from selection.api import (randomization,
 from selection.randomized.M_estimator import restricted_Mest
 from selection.randomized.query import naive_confidence_intervals
 
-@register_report(['mle', 'truth', 'pvalue', 'cover', 'naive_cover', 'active'])
+@register_report(['mle', 'truth', 'pvalue', 'cover', 'ci_length', 'naive_cover', 'active'])
 @set_seed_iftrue(SET_SEED)
 @set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
 def test_intervals(s=0,
                    n=200,
-                   p=20,
+                   p=10,
                    snr=7,
-                   rho=0.1,
-                   lam_frac=0.7,
+                   rho=0,
+                   lam_frac=1.,
                    ndraw=10000, 
                    burnin=2000, 
                    bootstrap=True,
@@ -40,7 +40,6 @@ def test_intervals(s=0,
     elif randomizer == 'logistic':
         randomizer = randomization.logistic((p,), scale=1.)
 
-    #randomizer =randomization.logistic((p,), scale=1.)
     if loss == "gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
         lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma
@@ -52,10 +51,10 @@ def test_intervals(s=0,
 
     nonzero = np.where(beta)[0]
 
-    epsilon = 1.
+    epsilon = 1./np.sqrt(n)
 
     W = np.ones(p)*lam
-    W[0] = 0 # use at least some unpenalized
+    #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
@@ -70,7 +69,7 @@ def test_intervals(s=0,
 
     active_union = M_est1.selection_variable['variables']
     nactive = np.sum(active_union)
-
+    print("nactive", nactive)
     if nactive==0:
         return None
 
@@ -123,15 +122,16 @@ def test_intervals(s=0,
         covered = np.zeros(nactive, np.bool)
         naive_covered = np.zeros(nactive, np.bool)
         active_var = np.zeros(nactive, np.bool)
-        
+        ci_length = np.zeros(nactive)
         for j in range(nactive):
             if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
                 covered[j] = 1
             if (LU_naive[j,0] <= true_vec[j]) and (LU_naive[j,1] >= true_vec[j]):
                 naive_covered[j] = 1
             active_var[j] = active_set[j] in nonzero
-
-        return pivots_mle, pivots_truth, pvalues, covered, naive_covered, active_var
+            ci_length[j] = U[j]-L[j]
+        #print(ci_length)
+        return pivots_mle, pivots_truth, pvalues, covered, ci_length, naive_covered, active_var
 
 
 def report(niter=10, **kwargs):
@@ -158,9 +158,9 @@ def report(niter=10, **kwargs):
     fig = reports.pivot_plot_2in1(bootstrap_runs, color='g', label='Bootstrap', fig=fig)
     fig.savefig('intervals_pivots.pdf') # will have both bootstrap and CLT on plot
 
-def report_ci(niter=10, **kwargs):
+def report_ci(niter=50, **kwargs):
 
-    kwargs = {'s': 3, 'n': 300, 'p': 20, 'snr': 7, 'bootstrap': False, 'randomizer':'gaussian',
+    kwargs = {'s': 0, 'n': 200, 'p': 20, 'snr': 7, 'bootstrap': False, 'randomizer':'gaussian', 'lam_frac':1.,
                     'loss':'gaussian', 'intervals':'new'}
     intervals_report = reports.reports['test_intervals']
     ci_new_runs = reports.collect_multiple_runs(intervals_report['test'],

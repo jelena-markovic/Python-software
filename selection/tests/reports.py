@@ -366,6 +366,8 @@ def compute_lengths(multiple_results):
         result['ci_length_split'] = np.mean(multiple_results['ci_length_split'])
     if 'ci_length_naive' in multiple_results.columns:
         result['ci_length_naive'] = np.mean(multiple_results['ci_length_naive'])
+    if 'ci_length' in multiple_results.columns:
+            result['ci_length'] = np.mean(multiple_results['ci_length'])
     return result
 
 def compute_length_frac(multiple_results):
