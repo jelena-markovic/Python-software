@@ -212,6 +212,8 @@ class forward_step(object):
         if compute_pval:
             return pval
 
+    __next__ = next # Python3 compatibility
+
     def constraints(self, step=np.inf, identify_last_variable=True):
         default_step = len(self.variables)
         if default_step > 0 and not identify_last_variable:
@@ -261,14 +263,17 @@ class forward_step(object):
         keep = np.ones(XA.shape[1], np.bool)
         keep[list(variables).index(variable)] = 0
         nuisance_variables = [v for i, v in enumerate(variables) if keep[i]]
-        XA_0 = X[:,nuisance_variables]
 
-        P0 = XA_0.dot(np.linalg.pinv(XA_0))
-        adjusted_direction = X[:,variable] - np.dot(P0, X[:,variable])
+        if nuisance_variables:
+            XA_0 = X[:,nuisance_variables]
+            beta_dir = np.linalg.solve(XA_0.T.dot(XA_0), XA_0.T.dot(X[:,variable]))
+            adjusted_direction = X[:,variable] - XA_0.dot(beta_dir)
+            con_test = con.conditional(XA_0.T, XA_0.T.dot(Y))
+        else:
+            con_test = con
+            adjusted_direction = X[:,variable]
 
-        con_test = con.conditional(XA_0.T, XA_0.T.dot(Y))
         chain_test = gaussian_hit_and_run(con_test, new_Y, nstep=nstep)
-
         test_stat = lambda y: -np.fabs(adjusted_direction.dot(y))
 
         if method == 'parallel':
@@ -411,6 +416,13 @@ class forward_step(object):
 
                         intervals.append((self.variables[i], (lower_lim_final, upper_lim_final)))
                     else: # we do not really need to tilt just for p-values
+
+                        if alternative == 'onesided':
+                            _alt = {1:'greater',
+                                    -1:'less'}[self.signs[i]]
+                        else:
+                            _alt = 'twosided'
+
                         _ , _, _, family = gibbs_test(conditional_law,
                                                       self.Y,
                                                       eta,
@@ -419,8 +431,9 @@ class forward_step(object):
                                                       ndraw=ndraw,
                                                       burnin=burnin,
                                                       how_often=10,
-                                                      use_random_directions=False,                                                     UMPU=False,
-                                                      alternative=alternative)
+                                                      use_random_directions=False,                                                     
+                                                      UMPU=False,
+                                                      alternative=_alt)
 
                     pval = family.cdf(0, observed_func)
                     if alternative == 'twosided':

@@ -1,5 +1,8 @@
+cython
+pandas
 numpy
 scipy
 mpmath
-regreg
 pyinter
+statsmodels
+sklearn

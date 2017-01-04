@@ -1,21 +1,12 @@
 import numpy as np
 
-# make any plots not use display
-
-from matplotlib import use
-use('Agg')
-import matplotlib.pyplot as plt
-
-# used for ECDF
-
-import statsmodels.api as sm
-
-from selection.algorithms.lasso import instance
+from selection.tests.flags import SET_SEED, SMALL_SAMPLES
+from selection.tests.instance import gaussian_instance
 from selection.algorithms.forward_step import forward_step, info_crit_stop, data_carving_IC
-from selection.tests.decorators import set_sampling_params_iftrue
+from selection.tests.decorators import set_sampling_params_iftrue, set_seed_iftrue
 
-@set_sampling_params_iftrue(True)
-def test_FS(k=10, ndraw=5000, burnin=5000, nsim=None):
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+def test_FS(k=10, ndraw=5000, burnin=5000):
 
     n, p = 100, 200
     X = np.random.standard_normal((n,p)) + 0.4 * np.random.standard_normal(n)[:,None]
@@ -28,16 +19,16 @@ def test_FS(k=10, ndraw=5000, burnin=5000, nsim=None):
     for i in range(k):
         FS.next(compute_pval=True)
 
-    print 'first %s variables selected' % k, FS.variables
+    print('first %s variables selected' % k, FS.variables)
 
-    print 'pivots for 3rd selected model knowing that we performed %d steps of forward stepwise' % k
+    print('pivots for 3rd selected model knowing that we performed %d steps of forward stepwise' % k)
 
-    print FS.model_pivots(3)
-    print FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw)
-    print FS.model_quadratic(3)
+    print(FS.model_pivots(3))
+    print(FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw))
+    print(FS.model_quadratic(3))
 
-@set_sampling_params_iftrue(True)
-def test_FS_unknown(k=10, ndraw=5000, burnin=5000, nsim=None):
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+def test_FS_unknown(k=10, ndraw=5000, burnin=5000):
 
     n, p = 100, 200
     X = np.random.standard_normal((n,p)) + 0.4 * np.random.standard_normal(n)[:,None]
@@ -50,14 +41,14 @@ def test_FS_unknown(k=10, ndraw=5000, burnin=5000, nsim=None):
     for i in range(k):
         FS.next()
 
-    print 'first %s variables selected' % k, FS.variables
+    print('first %s variables selected' % k, FS.variables)
 
-    print 'pivots for last variable of 3rd selected model knowing that we performed %d steps of forward stepwise' % k
+    print('pivots for last variable of 3rd selected model knowing that we performed %d steps of forward stepwise' % k)
 
-    print FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw)
+    print(FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw))
 
-@set_sampling_params_iftrue(True)
-def test_subset(k=10, ndraw=5000, burnin=5000, nsim=None):
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+def test_subset(k=10, ndraw=5000, burnin=5000):
 
     n, p = 100, 200
     X = np.random.standard_normal((n,p)) + 0.4 * np.random.standard_normal(n)[:,None]
@@ -73,24 +64,24 @@ def test_subset(k=10, ndraw=5000, burnin=5000, nsim=None):
     for i in range(k):
         FS.next()
 
-    print 'first %s variables selected' % k, FS.variables
+    print('first %s variables selected' % k, FS.variables)
 
-    print 'pivots for last variable of 3rd selected model knowing that we performed %d steps of forward stepwise' % k
+    print('pivots for last variable of 3rd selected model knowing that we performed %d steps of forward stepwise' % k)
 
-    print FS.model_pivots(3, saturated=True)
-    print FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw)
+    print(FS.model_pivots(3, saturated=True))
+    print(FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw))
 
     FS = forward_step(X, Y, subset=subset)
 
     for i in range(k):
         FS.next()
-    print FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw)
+    print(FS.model_pivots(3, saturated=False, which_var=[FS.variables[2]], burnin=burnin, ndraw=ndraw))
 
-@set_sampling_params_iftrue(True)
-def test_BIC(do_sample=True, ndraw=8000, burnin=2000, nsim=None,
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+def test_BIC(do_sample=True, ndraw=8000, burnin=2000, 
              force=False):
 
-    X, Y, beta, active, sigma = instance()
+    X, Y, beta, active, sigma = gaussian_instance()
     n, p = X.shape
     FS = info_crit_stop(Y, X, sigma, cost=np.log(n))
     final_model = len(FS.variables) 
@@ -121,7 +112,7 @@ def simulate_null(saturated=True, ndraw=8000, burnin=2000):
 
     return [p[-1] for p in FS.model_pivots(3, saturated=saturated, ndraw=ndraw, burnin=burnin)]
 
-@set_sampling_params_iftrue(True)
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10, nsim=10)
 def test_ecdf(nsim=1000, BIC=False,
               saturated=True,
               burnin=2000,
@@ -135,13 +126,8 @@ def test_ecdf(nsim=1000, BIC=False,
             P.extend(test_BIC(do_sample=True, ndraw=ndraw, burnin=burnin))
     P = np.array(P)
 
-    ecdf = sm.distributions.ECDF(P)
-
-    plt.clf()
-    plt.plot(ecdf.x, ecdf.y, linewidth=4, color='black')
-    plt.show()
-
-@set_sampling_params_iftrue(True)
+@set_seed_iftrue(SET_SEED)
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10, nsim=10)
 def test_data_carving_IC(nsim=500,
                          n=100,
                          p=200,
@@ -160,7 +146,7 @@ def test_data_carving_IC(nsim=500,
 
     while counter < nsim:
         counter += 1
-        X, y, beta, active, sigma = instance(n=n, 
+        X, y, beta, active, sigma = gaussian_instance(n=n, 
                                              p=p, 
                                              s=s, 
                                              sigma=sigma, 
@@ -185,8 +171,9 @@ def test_data_carving_IC(nsim=500,
                                           compute_intervals=compute_intervals,
                                           cost=np.log(n))
 
-            carve = [r[1] for r in results]
-            split = [r[3] for r in results]
+            carve_split = [(r[1], r[3]) for r in results]
+            carve = np.array(carve_split)[:,0]
+            split = np.array(carve_split)[:,1]
 
             Xa = X[:,FS.variables[:-1]]
             truth = np.dot(np.linalg.pinv(Xa), mu) 
@@ -198,6 +185,9 @@ def test_data_carving_IC(nsim=500,
                 carve_coverage.append((ci[0] < t) * (t < ci[1]))
                 split_coverage.append((si[0] < t) * (t < si[1]))
 
+            print(carve, 'carve')
+            print(split, 'split')
+            print(results, 'results')
             return ([carve[j] for j, i in enumerate(FS.active) if i >= s], 
                     [split[j] for j, i in enumerate(FS.active) if i >= s], 
                     [carve[j] for j, i in enumerate(FS.active) if i < s], 
@@ -205,11 +195,10 @@ def test_data_carving_IC(nsim=500,
                     counter, carve_coverage, split_coverage)
 
 
-@set_sampling_params_iftrue(True)
-def test_full_pvals(n=100, p=40, rho=0.3, snr=4, ndraw=8000, burnin=2000,
-                    nsim=None):
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+def test_full_pvals(n=100, p=40, rho=0.3, snr=4, ndraw=8000, burnin=2000):
 
-    X, y, beta, active, sigma = instance(n=n, p=p, snr=snr, rho=rho)
+    X, y, beta, active, sigma = gaussian_instance(n=n, p=p, snr=snr, rho=rho)
     FS = forward_step(X, y, covariance=sigma**2 * np.identity(n))
 
     from scipy.stats import norm as ndist
@@ -239,13 +228,12 @@ def test_full_pvals(n=100, p=40, rho=0.3, snr=4, ndraw=8000, burnin=2000,
 
     return X, y, beta, active, sigma, np.array(pval), completion_index
 
-@set_sampling_params_iftrue(False)
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 def test_mcmc_tests(n=100, p=40, s=4, rho=0.3, snr=5, ndraw=None, burnin=2000,
-                    nsim=None,
                     nstep=200,
                     method='serial'):
 
-    X, y, beta, active, sigma = instance(n=n, p=p, snr=snr, rho=rho, s=s)
+    X, y, beta, active, sigma = gaussian_instance(n=n, p=p, snr=snr, rho=rho, s=s)
     FS = forward_step(X, y, covariance=sigma**2 * np.identity(n))
 
     extra_steps = 4
@@ -271,14 +259,13 @@ def test_mcmc_tests(n=100, p=40, s=4, rho=0.3, snr=5, ndraw=None, burnin=2000,
 
     return null_rank, alt_rank
 
-@set_sampling_params_iftrue(False)
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 def test_independence_null_mcmc(n=100, p=40, s=4, rho=0.5, snr=5, 
                                 ndraw=None, burnin=2000,
-                                nsim=None,
                                 nstep=200,
                                 method='serial'):
 
-    X, y, beta, active, sigma = instance(n=n, p=p, snr=snr, rho=rho, s=s)
+    X, y, beta, active, sigma = gaussian_instance(n=n, p=p, snr=snr, rho=rho, s=s)
     FS = forward_step(X, y, covariance=sigma**2 * np.identity(n))
 
     extra_steps = 4

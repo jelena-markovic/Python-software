@@ -1,0 +1,50 @@
+language: python
+python:
+  - 2.7
+  - 3.3
+notifications:
+  email: false
+addons:
+  apt:
+    packages:
+        - libblas-dev
+        - liblapack-dev
+env:
+    global:
+        # Maximal dependencies
+        - DEPENDS="cython numpy scipy matplotlib"
+before_install:
+  - source travis-tools/utils.sh
+  - travis_before_install
+  # Install regreg 
+  - python -c "import numpy; print(numpy.version.version)"
+  - git clone https://github.com/jonathan-taylor/regreg.git
+  - cd regreg
+  - pip install -r requirements.txt
+  - pip install -e .
+  - cd ..
+install:
+  # Install selection
+  - pip install -r requirements.txt
+  - pip install -e .
+  - travis_install $INSTALL_TYPE
+# command to run tests, e.g. python setup.py test
+script:
+    - pip install nose
+    # Change into an innocuous directory and find tests from installation
+    - mkdir for_testing
+    - cd for_testing
+    # No figure windows for mpl; quote to hide : from travis-ci yaml parsing
+    - 'echo "backend : agg" > matplotlibrc'
+    # Doctests only on platforms that have compatible fp output
+    - if [ `uname` == "Darwin" ] ||
+      [ "${TRAVIS_PYTHON_VERSION:0:1}" == "3" ]; then
+      DOCTEST_ARGS="--with-doctest";
+      fi
+    - if [ "${COVERAGE}" == "1" ]; then
+      cp ../.coveragerc .;
+      COVER_ARGS="--with-coverage --cover-package selection";
+      fi
+    - env USE_SMALL_SAMPLES=1 SET_SEED=1 nosetests $DOCTEST_ARGS --verbose $COVER_ARGS selection
+after_success:
+    - if [ "${COVERAGE}" == "1" ]; then coveralls; fi
