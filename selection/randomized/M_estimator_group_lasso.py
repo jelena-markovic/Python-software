@@ -261,7 +261,7 @@ class M_estimator(object):
 
         self.score_mat = -_score_linear_term ## matrix M in the group_lasso note
         self.score_mat_inv = np.linalg.inv(self.score_mat)
-
+        self.affine_term = self.score_mat_inv.dot(_opt_affine_term)
 
     def projection(self, opt_state):
         """
@@ -298,7 +298,7 @@ class M_estimator(object):
         opt_piece_modified = np.zeros_like(opt_state)
         opt_piece_modified[self.scaling_slice] = np.dot(self._active_directions_mat.T, opt_state[self.scaling_slice])
         opt_piece_modified[self.subgrad_slice] = opt_state[self.subgrad_slice]
-        opt_piece_modified += self.score_mat_inv.dot(opt_offset)
+        opt_piece_modified += self.affine_term
         opt_grad = self.normal_data_gradient(opt_piece_modified)
         opt_grad[self.scaling_slice] = self._active_directions_mat.T.dot(opt_grad[self.scaling_slice])
 
@@ -349,7 +349,7 @@ class M_estimator(object):
         data = np.zeros_like(opt_state)
         data[self.scaling_slice] =  np.dot(self._active_directions_mat.T, opt_state.T[self.scaling_slice])
         data[self.subgrad_slice] = opt_state[self.subgrad_slice]
-        data += self.score_mat_inv.dot(opt_offset)
+        data += self.affine_term
         return data
 
 
@@ -490,7 +490,7 @@ class M_estimator(object):
                             level=0.9):
 
         if stepsize is None:
-            stepsize = 5./self.p
+            stepsize = 10./self.p
 
         if sample is None:
             sample = self.sample(ndraw, burnin, stepsize=stepsize)
