@@ -259,10 +259,7 @@ class M_estimator(object):
 
         self._setup = True
 
-        #_opt_affine_term_modified = np.dot(np.linalg.inv(_score_linear_term), _opt_affine_term)
-        #_opt_linear_term_modified =
-        #self.opt_transform_modified = (_opt_affine_term_modified, _opt_linear_term_modified)
-        self.score_mat = -_score_linear_term
+        self.score_mat = -_score_linear_term ## matrix M in the group_lasso note
         self.score_mat_inv = np.linalg.inv(self.score_mat)
 
 
@@ -293,13 +290,18 @@ class M_estimator(object):
         """
         opt_linear, opt_offset = self.opt_transform
         opt_piece = opt_linear.dot(opt_state) + opt_offset
-        #data_derivative = self.normal_data_gradient(opt_piece)
-        # chain rule for optimization part
-        # opt_grad = opt_linear.T.dot(data_derivative)
-        opt_piece_modified = self.score_mat_inv.dot(opt_piece)
-        opt_grad = self.normal_data_gradient(opt_piece_modified)
 
+        #opt_piece_modified = self.score_mat_inv.dot(opt_piece)
+        #opt_grad = self.normal_data_gradient(opt_piece_modified)
+        #opt_grad[self.scaling_slice] = self._active_directions_mat.T.dot(opt_grad[self.scaling_slice])
+
+        opt_piece_modified = np.zeros_like(opt_state)
+        opt_piece_modified[self.scaling_slice] = np.dot(self._active_directions_mat.T, opt_state[self.scaling_slice])
+        opt_piece_modified[self.subgrad_slice] = opt_state[self.subgrad_slice]
+        opt_piece_modified += self.score_mat_inv.dot(opt_offset)
+        opt_grad = self.normal_data_gradient(opt_piece_modified)
         opt_grad[self.scaling_slice] = self._active_directions_mat.T.dot(opt_grad[self.scaling_slice])
+
         return opt_grad #- self.grad_log_jacobian(opt_state)
 
     def setup_sampler(self, score_mean,
@@ -313,12 +315,14 @@ class M_estimator(object):
                                               inactive=~self._overall)[0]
 
         score_cov = bootstrap_cov(lambda: np.random.choice(n, size=(n,), replace=True), bootstrap_score)
+
+        # parametric
         #score_cov = np.zeros((p,p))
-        #X_E = X[:, self._active_groups]
-        #X_minusE = X[:, ~self._active_groups]
-        #score_cov[:self._active_groups.sum(), :self._active_groups.sum()] = np.linalg.inv(np.dot(X_E.T, X_E))
+        #X_E = X[:, self._overall]
+        #X_minusE = X[:, ~self._overall]
+        #score_cov[:self._overall.sum(), :self._overall.sum()] = np.linalg.inv(np.dot(X_E.T, X_E))
         #residual_mat = np.identity(n)-np.dot(X_E, np.linalg.pinv(X_E))
-        #score_cov[self._active_groups.sum():, self._active_groups.sum():] = np.dot(X_minusE.T, np.dot(residual_mat, X_minusE))
+        #score_cov[self._overall.sum():, self._overall.sum():] = np.dot(X_minusE.T, np.dot(residual_mat, X_minusE))
 
         self.score_cov = score_cov
         self.score_cov_inv = np.linalg.inv(self.score_cov)
@@ -330,6 +334,7 @@ class M_estimator(object):
         self.reference = score_mean
         #print(self.reference)
 
+
     def reconstruction_map(self, opt_state):
 
         if not self._setup:
@@ -339,9 +344,14 @@ class M_estimator(object):
 
         #opt_state = np.atleast_2d(opt_state)
         opt_linear, opt_offset = self.opt_transform
-        opt_piece = opt_linear.dot(opt_state.T) + opt_offset
+        #opt_piece = opt_linear.dot(opt_state.T) + opt_offset
+        #data = self.score_mat_inv.dot(opt_piece)
+        data = np.zeros_like(opt_state)
+        data[self.scaling_slice] =  np.dot(self._active_directions_mat.T, opt_state.T[self.scaling_slice])
+        data[self.subgrad_slice] = opt_state[self.subgrad_slice]
+        data += self.score_mat_inv.dot(opt_offset)
+        return data
 
-        return self.score_mat_inv.dot(opt_piece)
 
     def sample(self, ndraw, burnin, stepsize):
         '''
@@ -386,6 +396,7 @@ class M_estimator(object):
             if (i >= burnin):
                 samples.append(self.reconstruction_map(langevin.state.copy()))
 
+        self.samples = np.asarray(samples)
         return np.asarray(samples)
 
     def hypothesis_test(self,
@@ -477,12 +488,13 @@ class M_estimator(object):
                             stepsize=None,
                             sample=None,
                             level=0.9):
+
         if stepsize is None:
-            stepsize = 1./self.p
+            stepsize = 5./self.p
 
         if sample is None:
             sample = self.sample(ndraw, burnin, stepsize=stepsize)
-            print(sample.shape)
+
         #nactive = observed.shape[0]
         self.target_cov = self.score_cov[:self._overall.sum(),:self._overall.sum()]
         intervals_instance = intervals_from_sample(self.reference[:self._overall.sum()],
