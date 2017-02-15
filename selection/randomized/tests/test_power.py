@@ -34,6 +34,7 @@ def test_power(s=30,
                lam_frac = 1.,
                q = 0.2,
                cross_validation = True,
+               condition_on_CVR=True,
                randomizer = 'gaussian',
                randomizer_scale = 1.,
                ndraw=20000,
@@ -69,7 +70,6 @@ def test_power(s=30,
         lam = cv.lam_CVR
         print("minimizer of CVR", lam)
 
-        condition_on_CVR = True
         if condition_on_CVR:
             cv.condition_on_opt_state()
             #lam = np.true_divide(lam+cv.one_SD_rule(direction="up"),2)
@@ -176,13 +176,12 @@ def report(niter=50, **kwargs):
     fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
-def compute_power():
-    np.random.seed(1000)
+def compute_power(n=3000, p=1000, s=30, cross_validation=True, condition_on_CVR=True):
     BH_sample, simple_rejections_sample = [], []
     niter = 50
     for i in range(niter):
         print("iteration", i)
-        result = test_power()[1]
+        result = test_power(n=n, p=p, s=30, cross_validation=cross_validation, condition_on_CVR=condition_on_CVR)[1]
         if result is not None:
             pvalues, active_var, s = result
             BH_sample.append(BH(pvalues, active_var,s))
