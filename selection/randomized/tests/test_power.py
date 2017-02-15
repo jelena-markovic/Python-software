@@ -44,7 +44,7 @@ def test_power(s=30,
                subgrad =True,
                parametric=True):
 
-    print(n,p,s)
+    print(n,p,s, cross_validation, condition_on_CVR)
     if loss=="gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma
@@ -181,7 +181,7 @@ def compute_power(n=3000, p=1000, s=30, cross_validation=True, condition_on_CVR=
     niter = 50
     for i in range(niter):
         print("iteration", i)
-        result = test_power(n=n, p=p, s=30, cross_validation=cross_validation, condition_on_CVR=condition_on_CVR)[1]
+        result = test_power(n=n, p=p, s=s, cross_validation=cross_validation, condition_on_CVR=condition_on_CVR)[1]
         if result is not None:
             pvalues, active_var, s = result
             BH_sample.append(BH(pvalues, active_var,s))
