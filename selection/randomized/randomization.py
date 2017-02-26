@@ -280,7 +280,7 @@ class split(randomization):
         idx = np.zeros(n, np.bool)
         idx[:m] = 1
         np.random.shuffle(idx)
-
+        self.idx = idx
         randomized_loss = loss.subsample(idx)
         randomized_loss.coef *= inv_frac
 

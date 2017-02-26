@@ -7,7 +7,7 @@ from selection.tests.decorators import wait_for_return_value, register_report, s
 import selection.tests.reports as reports
 from selection.tests.flags import SMALL_SAMPLES
 
-from selection.api import multiple_queries, glm_target
+from selection.api import multiple_queries, loco_target
 from selection.randomized.glm import split_glm_group_lasso
 from selection.tests.instance import (gaussian_instance, logistic_instance)
 
@@ -17,32 +17,34 @@ from selection.randomized.query import (naive_pvalues, naive_confidence_interval
                   'naive_pvalues', 'naive_cover','ci_length_naive', 'active'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
-def test_split(s=0,
-               n=400,
-               p=50,
-               snr=7,
-               rho=0.,
-               split_frac=0.8,
-               lam_frac=0.7,
-               loss = 'gaussian',
-               ndraw=10000,
-               burnin=2000, 
-               bootstrap=False,
-               solve_args={'min_its':50, 'tol':1.e-10},
-               reference_known=False):
+def test_loco(s=3,
+              n=200,
+              p=50,
+              snr=7,
+              rho=0.,
+              split_frac=0.8,
+              lam_frac=0.7,
+              loss_label = 'gaussian',
+              ndraw=10000,
+              burnin=2000,
+              bootstrap=False,
+              solve_args={'min_its':50, 'tol':1.e-10},
+              reference_known=False):
 
-    if loss == "gaussian":
+    if loss_label == "gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
         loss = rr.glm.gaussian(X, y)
-    elif loss == "logistic":
+        loss_rr = rr.glm.gaussian
+    elif loss_label == "logistic":
         X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
         loss = rr.glm.logistic(X, y)
         lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
+        loss_rr = rr.glm.logistic
 
-    m = int(split_frac * n)
     nonzero = np.where(beta)[0]
 
+    m = int(split_frac * n)
     epsilon = 1. / np.sqrt(n)
 
     W = np.ones(p)*lam
@@ -54,41 +56,31 @@ def test_split(s=0,
     mv = multiple_queries([M_est])
     mv.solve()
 
-    M_est.selection_variable['variables'] = M_est.selection_variable['variables']
     active = M_est.selection_variable['variables']
+    true_vec = beta[active]
     nactive = np.sum(active)
+
+    idx = M_est.randomization.idx
+    loss_1 = loss_rr(X[idx,:], y[idx])
+    loss_2 = loss_rr(X[~idx,:], y[~idx])
 
     if nactive==0:
         return None
-    print(nactive)
-
-    true_vec = beta[active]
 
     if set(nonzero).issubset(np.nonzero(M_est.selection_variable['variables'])[0]):
 
         active_set = np.nonzero(active)[0]
 
-        if bootstrap:
-            target_sampler, target_observed = glm_target(loss, 
-                                                         M_est.selection_variable['variables'],
-                                                         mv,
-                                                         bootstrap=True)
-        else:
-            target_sampler, target_observed = glm_target(loss, 
-                                                         M_est.selection_variable['variables'],
-                                                         mv,
-                                                         bootstrap=False)
-
-        if reference_known:
-            reference = beta[M_est.selection_variable['variables']] 
-        else:
-            reference = target_observed
-
-        target_sampler.reference = reference
+        target_sampler, target_observed = loco_target(loss_1, loss_2,
+                                                      glm_loss=loss_rr,
+                                                      active=active,
+                                                      epsilon=0.2,
+                                                      lam=lam,
+                                                      queries=mv,
+                                                      bootstrap=bootstrap)
 
         target_sample = target_sampler.sample(ndraw=ndraw,
                                               burnin=burnin)
-
 
         LU = target_sampler.confidence_intervals(target_observed,
                                                  sample=target_sample).T
@@ -98,7 +90,8 @@ def test_split(s=0,
         pivots_mle = target_sampler.coefficient_pvalues(target_observed,
                                                         parameter=target_sampler.reference,
                                                         sample=target_sample)
-        
+
+        true_vec = target_observed # needs to be changed
         pivots_truth = target_sampler.coefficient_pvalues(target_observed,
                                                           parameter=true_vec,
                                                           sample=target_sample)
@@ -133,23 +126,16 @@ def test_split(s=0,
 
 def report(niter=50, **kwargs):
 
-    split_report = reports.reports['test_split']
-    CLT_runs = reports.collect_multiple_runs(split_report['test'],
+    split_report = reports.reports['test_loco']
+    runs = reports.collect_multiple_runs(split_report['test'],
                                              split_report['columns'],
                                              niter,
                                              reports.summarize_all,
                                              **kwargs)
-    kwargs['bootstrap'] = False
-    fig = reports.pivot_plot(CLT_runs, color='b', label='CLT')
+    fig = reports.pivot_plot_plus_naive(runs)
+    fig.suptitle('Randomized Lasso marginalized subgradient')
+    fig.savefig('marginalized_subgrad_pivots.pdf')
 
-    kwargs['bootstrap'] = True
-    bootstrap_runs = reports.collect_multiple_runs(split_report['test'],
-                                                   split_report['columns'],
-                                                   niter,
-                                                   reports.summarize_all,
-                                                   **kwargs)
-    fig = reports.pivot_plot(bootstrap_runs, color='g', label='Bootstrap', fig=fig)
-    fig.savefig('split_pivots.pdf') # will have both bootstrap and CLT on plot
 
 if __name__== '__main__':
     report()

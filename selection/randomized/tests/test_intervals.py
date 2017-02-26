@@ -51,27 +51,25 @@ def test_intervals(s=0,
         lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
     nonzero = np.where(beta)[0]
-    epsilon = 1./np.sqrt(n)
+    m = int(split_frac * n)
+    nonzero = np.where(beta)[0]
 
-    W = lam_frac*np.ones(p)*lam
-    # W[0] = 0 # use at least some unpenalized
-    groups = np.concatenate([np.arange(10) for i in range(p/10)])
-    #print(groups)
-    #groups = np.arange(p)
-    penalty = rr.group_lasso(groups,
+    loss = rr.glm.logistic(X, y)
+    epsilon = 1. / np.sqrt(n)
+
+    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 2000)))).max(0))
+    W = np.ones(p) * lam
+    W[0] = 0  # use at least some unpenalized
+    penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
-    # first randomization
-    M_est1 = glm_group_lasso(loss, epsilon, penalty, randomizer)
-    mv = multiple_queries([M_est1])
-    # second randomization
-    #M_est2 = glm_group_lasso(loss, epsilon, penalty, randomizer)
-    #mv = multiple_queries([M_est1, M_est2])
-
+    M_est = split_glm_group_lasso(loss, epsilon, m, penalty)
+    mv = multiple_queries([M_est])
     mv.solve()
 
-    active_union = M_est1.selection_variable['variables']
-    print("active set", np.nonzero(active_union)[0])
+    M_est.selection_variable['variables'] = M_est.selection_variable['variables']
+    nactive = np.sum(M_est.selection_variable['variables'])
+
     nactive = np.sum(active_union)
 
     if nactive==0:
