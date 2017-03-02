@@ -402,7 +402,7 @@ class fixedX_group_lasso(M_estimator):
 
 # Methods to form appropriate covariances
 
-def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
+def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=1000):
     """
     m out of n bootstrap
 
@@ -418,8 +418,8 @@ def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
     _outer_target = 0.
 
     for j in range(nsample):
-        #if j % 100==0:
-        #    print(j)
+        if j % 100==0:
+            print(j)
         indices = sampler()
         _boot_target = boot_target(indices)
 
@@ -567,173 +567,3 @@ def standard_ci_sm(X, y, active, leftout_indices, alpha=0.1):
     LU = result.conf_int(alpha=alpha)
     return LU.T
 
-
-import regreg.api as rr
-
-def pairs_bootstrap_loco(loss_1, loss_2,
-                         glm_loss,
-                         active,
-                         epsilon,
-                         lam,
-                         inactive=None,
-                         solve_args={'min_its': 50, 'tol': 1.e-10}):
-
-    """
-    pairs bootstrap for the loco parameter
-    """
-
-    X1, y1 = loss_1.data
-    X2, y2 = loss_2.data
-    n1, p = X1.shape
-    n2, _= X2.shape
-    n=n1+n2
-    nactive = active.sum()
-    active_set =  np.nonzero(active)[0]
-
-    #ntotal = nactive
-    #if inactive is not None:
-    #    ntotal += inactive.sum()
-
-    def _beta(loss, lam=lam):
-        X, y = loss.data
-        ncol = X.shape[1]
-        penalty = rr.l1norm(ncol, lagrange=lam)
-        problem = rr.simple_problem(loss,penalty)
-        beta_train = problem.solve(**solve_args)
-        return beta_train
-
-    beta_train = _beta(glm_loss(X1,y1))
-    beta_train_locos = []
-
-    for j in range(nactive):
-        keep = np.ones(p, np.bool)
-        keep[active_set[j]] = 0
-        beta_train_minus_j = _beta(glm_loss(X1[:, keep], y1))
-        beta_train_locos.append(beta_train_minus_j)
-
-
-    def _boot_loco(X2, y2, indices):
-        indices2 = indices[(n-n2):]-n1
-        X2_star = X2[indices2,:]
-        y2_star = y2[indices2]
-
-        loco = np.zeros(nactive)
-        for j in range(nactive):
-            keep = np.ones(p, np.bool)
-            keep[active_set[j]] = 0
-            def test_error(X, y):
-                randomization = np.random.uniform(low=-1, high=1) * epsilon
-                return np.abs(y - np.dot(X[keep], beta_train_locos[j])) \
-                       - np.abs(y - np.dot(X, beta_train)) + randomization
-
-            loco[j] = np.mean([test_error(X2_star[i,:], y2_star[i]) for i in range(X2_star.shape[0])])
-
-        return loco
-
-    observed = _boot_loco(X2, y2, np.arange(n))
-
-    return functools.partial(_boot_loco, X2, y2), observed
-
-
-def loco_target(loss_1, loss_2,
-                glm_loss,
-                active,
-                epsilon,
-                lam,
-                queries,
-                bootstrap = False,
-                solve_args = {'min_its': 50, 'tol': 1.e-10},
-                reference = None,
-                parametric = False):
-
-    """
-    Form target from self.loss
-    restricting to active variables.
-
-    If subset is not None, then target returns
-    only those coordinates of the active
-    variables.
-
-    Parameters
-    ----------
-
-    query : `query`
-       A query with a glm loss.
-
-    active : np.bool
-       Indicators of active variables.
-
-    queries : `multiple_queries`
-       Sampler returned for this queries.
-
-    subset : np.bool
-       Indicator of subset of variables
-       to be returned. Includes both
-       active and inactive variables.
-
-    bootstrap : bool
-       If True, sampler returned uses bootstrap
-       otherwise uses a plugin CLT.
-
-    reference : np.float (optional)
-       Optional reference parameter. Defaults
-       to the observed reference parameter.
-       Must have shape `active.sum()`.
-
-    solve_args : dict
-       Args used to solve restricted M estimator.
-
-    Returns
-    -------
-
-    target_sampler : `targeted_sampler`
-
-    """
-
-
-    X1, y1 = loss_1.data
-    X2, y2 = loss_2.data
-    n1 = X1.shape[0]
-    n2 = X2.shape[0]
-
-    boot_loco, loco_observed = pairs_bootstrap_loco(loss_1, loss_2,
-                                                    glm_loss,
-                                                    active,
-                                                    epsilon,
-                                                    lam)
-
-    if parametric == False:
-        sampler = lambda: np.concatenate((np.random.choice(n1, size=(1,), replace=True),
-                                          n1+np.random.choice(n2, size=(1,), replace=True)), axis=0)
-        form_covariances = functools.partial(bootstrap_cov, sampler)
-    else:
-        raise Exception('Parametric loco not implemented yet.')
-        #form_covariances = glm_parametric_covariance(loss)
-
-    queries.setup_sampler(form_covariances)
-    queries.setup_opt_state()
-
-    if reference is None:
-        reference = loco_observed
-
-    #if parametric:
-    #    linear_func = np.identity(target_observed.shape[0])
-    #    _target = (active, linear_func)
-
-    if bootstrap:
-        raise Exception('Bootstrap sampler not implemented yet for loco.')
-        #alpha_mat = set_alpha_matrix(loss, active, inactive=inactive)
-        #alpha_subset = np.ones(alpha_mat.shape[0], np.bool)
-        #alpha_subset[:nactive] = active_subset
-        #alpha_mat = alpha_mat[alpha_subset]
-        #target_sampler = queries.setup_bootstrapped_target(_target,
-        #                                               target_observed,
-        #                                               alpha_mat,
-        #                                               reference=reference)
-    else:
-        target_sampler = queries.setup_target(boot_loco,
-                                              loco_observed,
-                                              reference=reference,
-                                              parametric=parametric)
-
-    return target_sampler, loco_observed

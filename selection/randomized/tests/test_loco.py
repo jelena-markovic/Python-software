@@ -7,26 +7,28 @@ from selection.tests.decorators import wait_for_return_value, register_report, s
 import selection.tests.reports as reports
 from selection.tests.flags import SMALL_SAMPLES
 
-from selection.api import multiple_queries, loco_target
+from selection.api import multiple_queries
+from selection.randomized.loco import LOCO, loco_target
 from selection.randomized.glm import split_glm_group_lasso
 from selection.tests.instance import (gaussian_instance, logistic_instance)
 
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 @register_report(['mle', 'truth', 'pvalue', 'cover', 'ci_length_clt',
-                  'naive_pvalues', 'naive_cover','ci_length_naive', 'active'])
+                  'naive_pvalues', 'naive_cover','ci_length_naive', 'active',
+                  'covered_split', 'ci_length_split' ])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
-def test_loco(s=3,
+def test_loco(s=0,
               n=200,
               p=50,
               snr=7,
               rho=0.,
-              split_frac=0.8,
-              lam_frac=0.7,
+              split_frac = 0.8,
+              lam_frac = 0.8,
               loss_label = 'gaussian',
-              ndraw=10000,
-              burnin=2000,
+              ndraw = 10000,
+              burnin = 2000,
               bootstrap=False,
               solve_args={'min_its':50, 'tol':1.e-10},
               reference_known=False):
@@ -66,18 +68,22 @@ def test_loco(s=3,
 
     if nactive==0:
         return None
-
+    print("nactive", nactive)
     if set(nonzero).issubset(np.nonzero(M_est.selection_variable['variables'])[0]):
 
         active_set = np.nonzero(active)[0]
 
-        target_sampler, target_observed = loco_target(loss_1, loss_2,
-                                                      glm_loss=loss_rr,
-                                                      active=active,
-                                                      epsilon=0.2,
-                                                      lam=lam,
+        _loco = LOCO(loss, loss_1, loss_2,
+                     loss_rr=loss_rr,
+                     active=active,
+                     epsilon=1.,
+                     lam=lam)
+
+        target_sampler, target_observed = loco_target(loss,
+                                                      _loco.pairs_bootstrap_loco(),
                                                       queries=mv,
                                                       bootstrap=bootstrap)
+                                                      # reference=np.zeros(nactive))
 
         target_sample = target_sampler.sample(ndraw=ndraw,
                                               burnin=burnin)
@@ -91,7 +97,7 @@ def test_loco(s=3,
                                                         parameter=target_sampler.reference,
                                                         sample=target_sample)
 
-        true_vec = target_observed # needs to be changed
+        true_vec = np.zeros_like(target_observed) # needs to be changed
         pivots_truth = target_sampler.coefficient_pvalues(target_observed,
                                                           parameter=true_vec,
                                                           sample=target_sample)
@@ -100,28 +106,34 @@ def test_loco(s=3,
                                                      parameter=np.zeros_like(true_vec),
                                                      sample=target_sample)
 
-        L, U = LU
-
-        covered = np.zeros(nactive, np.bool)
-        ci_length_sel = np.zeros(nactive)
-        naive_covered = np.zeros(nactive, np.bool)
+        LU_split = _loco.split_intervals()
         active_var = np.zeros(nactive, np.bool)
-        ci_length_naive = np.zeros(nactive)
+
+
+        def coverage(LU):
+            L, U = LU[:, 0], LU[:, 1]
+            covered = np.zeros(nactive, np.bool)
+            ci_length = np.zeros(nactive)
+
+            for j in range(nactive):
+                if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
+                        covered[j] = 1
+                ci_length[j] = U[j] - L[j]
+            return covered, ci_length
 
         for j in range(nactive):
-            if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
-                covered[j] = 1
-            ci_length_sel[j] = U[j]-L[j]
-            if (LU_naive[j,0] <= true_vec[j]) and (LU_naive[j,1] >= true_vec[j]):
-                naive_covered[j] = 1
-            ci_length_naive[j] = LU_naive[j, 1] - LU_naive[j, 0]
-
             active_var[j] = active_set[j] in nonzero
+
+        covered, ci_length_sel = coverage(LU.T)
+        naive_covered, ci_length_naive = coverage(LU_naive)
+        split_covered, ci_length_split = coverage(LU_split)
 
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
         return pivots_mle, pivots_truth, pvalues, covered, ci_length_sel,\
-               naive_pvals, naive_covered, ci_length_naive, active_var
+               naive_pvals, naive_covered, ci_length_naive, active_var,\
+                split_covered, ci_length_split
+
 
 
 def report(niter=50, **kwargs):
