@@ -16,7 +16,7 @@ from selection.randomized.query import (naive_pvalues, naive_confidence_interval
 
 @register_report(['mle', 'truth', 'pvalue', 'cover', 'ci_length_clt',
                   'naive_pvalues', 'naive_cover','ci_length_naive', 'active',
-                  'covered_split', 'ci_length_split' ])
+                  'covered_split', 'ci_length_split'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_loco(s=0,
