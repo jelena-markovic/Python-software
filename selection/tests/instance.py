@@ -5,7 +5,8 @@ from scipy.stats import t as tdist
 
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
                       random_signs=False, df=np.inf,
-                      scale=True, center=True):
+                      scale=True, center=True,
+                      equi_correlated=True):
     """
     A testing instance for the LASSO.
     Design is equi-correlated in the population,
@@ -60,16 +61,24 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
 
     sigma : float
         Noise level.
-
     """
 
-    X = (np.sqrt(1-rho) * np.random.standard_normal((n,p)) + 
-        np.sqrt(rho) * np.random.standard_normal(n)[:,None])
+    if equi_correlated:
+        X = (np.sqrt(1-rho) * np.random.standard_normal((n,p)) +
+            np.sqrt(rho) * np.random.standard_normal(n)[:,None])
+    else:
+        def AR1(rho, p):
+            idx = np.arange(p)
+            cov = rho ** np.abs(np.subtract.outer(idx, idx))
+            return cov, np.linalg.cholesky(cov)
+        sigmaX, cholX = AR1(rho=rho, p=p)
+        X = np.random.standard_normal((n, p)).dot(cholX.T)
+
     if center:
         X -= X.mean(0)[None,:]
     if scale:
         X /= (X.std(0)[None,:] * np.sqrt(n))
-    beta = np.zeros(p) 
+    beta = np.zeros(p)
     beta[:s] = snr 
     if random_signs:
         beta[:s] *= (2 * np.random.binomial(1, 0.5, size=(s,)) - 1.)
