@@ -6,6 +6,18 @@ import regreg.api as rr
 from selection.randomized.M_estimator import restricted_Mest
 from selection.randomized.M_estimator_nonrandom import M_estimator
 
+from selection.tests.flags import SET_SEED, SMALL_SAMPLES
+from selection.tests.decorators import (wait_for_return_value,
+                                        set_seed_iftrue,
+                                        set_sampling_params_iftrue,
+                                        register_report)
+import selection.tests.reports as reports
+
+
+@register_report(['covered_clt', 'ci_length_clt'])
+@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
+@set_seed_iftrue(SET_SEED)
+@wait_for_return_value()
 def test_nonrandomized(s=0,
                        n=200,
                        p=10,
@@ -13,6 +25,8 @@ def test_nonrandomized(s=0,
                        rho=0,
                        lam_frac=0.8,
                        loss='gaussian',
+                       ndraw = 10000,
+                       burnin= 2000,
                        solve_args={'min_its': 20, 'tol': 1.e-10}):
     if loss == "gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
@@ -43,32 +57,68 @@ def test_nonrandomized(s=0,
     M_est.setup_sampler(score_mean=score_mean)
     #M_est.sample(ndraw = 1000, burnin=1000, stepsize=1./p)
 
-    test_stat = lambda x: np.linalg.norm(x[:nactive])
+    #test_stat = lambda x: np.linalg.norm(x[:nactive])
+    #M_est.hypothesis_test(test_stat, test_stat(M_est.observed_score_state), stepsize=1. / p)
+    score_sample = M_est.sample(ndraw=ndraw,
+                                 burnin=burnin, stepsize=1./p)
+    print(score_sample.shape)
+    target_sample = score_sample[:, :nactive]
+    print(target_sample.shape)
+    LU = M_est.confidence_intervals(M_est.observed_score_state[:nactive],
+                                    sample=target_sample,
+                                    level=0.9)
 
-    return M_est.hypothesis_test(test_stat, test_stat(M_est.observed_score_state), stepsize=1./p)
+    true_vec = beta[active]
+    def coverage(LU):
+        L, U = LU[:, 0], LU[:, 1]
+        covered = np.zeros(nactive)
+        ci_length = np.zeros(nactive)
+
+        for j in range(nactive):
+            if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
+                    covered[j] = 1
+            ci_length[j] = U[j] - L[j]
+        return covered, ci_length
+
+    sel_covered, sel_length = coverage(LU)
+
+    return sel_covered, sel_length
 
 
-if __name__=='__main__':
+def report(niter=50, **kwargs):
 
-    pvals = []
-    for i in range(50):
-        print(i)
-        pval = test_nonrandomized()
-        print(pval)
-        if pval is not None:
-            pvals.append(pval)
+    condition_report = reports.reports['test_nonrandomized']
+    runs = reports.collect_multiple_runs(condition_report['test'],
+                                         condition_report['columns'],
+                                         niter,
+                                         reports.summarize_all,
+                                         **kwargs)
 
-    import matplotlib.pyplot as plt
-    import statsmodels.api as sm
+    #fig = reports.pivot_plot_simple(runs)
+    #fig.savefig('marginalized_subgrad_pivots.pdf')
 
-    fig = plt.figure()
-    ax = fig.gca()
 
-    ecdf = sm.distributions.ECDF(pvals)
-    G = np.linspace(0, 1)
-    F = ecdf(G)
-    ax.plot(G, F, '-o', c='b', lw=2)
-    ax.plot([0, 1], [0, 1], 'k-', lw=2)
-    ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
-    plt.show()
+if __name__ == '__main__':
+    report()
+
+
+
+   # pvals = []
+   # for i in range(50):
+   #     print(i)
+   #     pval = test_nonrandomized()
+   #     print(pval)
+   #     if pval is not None:
+   #         pvals.append(pval)
+   #import matplotlib.pyplot as plt
+   # import statsmodels.api as sm
+   # fig = plt.figure()
+   # ax = fig.gca()
+   #ecdf = sm.distributions.ECDF(pvals)
+   # G = np.linspace(0, 1)
+   # F = ecdf(G)
+   # ax.plot(G, F, '-o', c='b', lw=2)
+   # ax.plot([0, 1], [0, 1], 'k-', lw=2)
+   # ax.set_xlim([0, 1])
+   # ax.set_ylim([0, 1])
+   # plt.show()

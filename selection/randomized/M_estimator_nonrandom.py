@@ -3,7 +3,7 @@ import regreg.api as rr
 
 from selection.randomized.glm import pairs_bootstrap_glm, bootstrap_cov
 from ..sampling.langevin import projected_langevin
-from ..distributions.api import discrete_family
+from ..distributions.api import discrete_family, intervals_from_sample
 
 class M_estimator(object):
 
@@ -313,6 +313,8 @@ class M_estimator(object):
         self.total_cov_inv = np.linalg.inv(self.total_cov)
         self.reference = self.score_mat.dot(score_mean)
         #print(self.reference)
+        nactive = self._overall.sum()
+        self.target_cov = self.score_cov[:nactive,:nactive]
 
     def reconstruction_map(self, opt_state):
 
@@ -323,8 +325,7 @@ class M_estimator(object):
 
         opt_state = np.atleast_2d(opt_state)
         opt_linear, opt_offset = self.opt_transform
-        opt_piece = opt_linear.dot(opt_state.T) + opt_offset
-
+        opt_piece = opt_linear.dot(opt_state.T).flatten() + opt_offset
         return self.score_mat_inv.dot(opt_piece)
 
     def sample(self, ndraw, burnin, stepsize):
@@ -376,7 +377,7 @@ class M_estimator(object):
                         test_stat,
                         observed_value,
                         ndraw=10000,
-                        burnin=0,
+                        burnin=2000,
                         stepsize=None,
                         sample=None,
                         parameter=None,
@@ -450,6 +451,69 @@ class M_estimator(object):
             return pval
         else:
             return 2 * min(pval, 1 - pval)
+
+    def confidence_intervals(self,
+                            observed,
+                            ndraw=10000,
+                            burnin=2000,
+                            stepsize=None,
+                            sample=None,
+                            level=0.9):
+
+
+        '''
+        Parameters
+        ----------
+
+        observed : np.float
+            A vector of parameters with shape `self.shape`,
+            representing coordinates of the target.
+
+        ndraw : int
+            How long a chain to return?
+
+        burnin : int
+            How many samples to discard?
+
+        stepsize : float
+            Stepsize for Langevin sampler. Defaults
+            to a crude estimate based on the
+            dimension of the problem.
+
+        sample : np.array (optional)
+            If not None, assumed to be a sample of shape (-1,) + `self.shape`
+            representing a sample of the target from parameters `self.reference`.
+            Allows reuse of the same sample for construction of confidence
+            intervals, hypothesis tests, etc.
+
+        level : float (optional)
+            Specify the
+            confidence level.
+
+        Notes
+        -----
+
+        Construct selective confidence intervals
+        for each parameter of the target.
+
+        Returns
+        -------
+
+        intervals : [(float, float)]
+        List of confidence intervals.
+
+        '''
+
+        if sample is None:
+            sample = self.sample(ndraw, burnin, stepsize=stepsize)
+
+        nactive = observed.shape[0]
+        intervals_instance = intervals_from_sample(self.reference[:self._overall.sum()],
+                                           sample,
+                                           observed,
+                                           self.target_cov)
+
+        return intervals_instance.confidence_intervals_all(level=level)
 
 
 def restricted_Mest(Mest_loss, active, solve_args={'min_its':50, 'tol':1.e-10}):
