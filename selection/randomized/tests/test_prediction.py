@@ -3,7 +3,7 @@ import numpy as np
 
 import regreg.api as rr
 import selection.tests.reports as reports
-
+from selection.distributions.intervals import intervals_from_sample
 
 from selection.tests.flags import SET_SEED, SMALL_SAMPLES
 from selection.tests.instance import logistic_instance, gaussian_instance
@@ -15,19 +15,12 @@ import selection.tests.reports as reports
 
 from selection.api import (randomization,
                            glm_group_lasso,
-                           pairs_bootstrap_glm,
                            multiple_queries,
-                           discrete_family,
-                           projected_langevin,
                            glm_group_lasso_parametric,
                            glm_target)
 
-from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
+from selection.randomized.glm import normal_interval
 
-from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
-
-@register_report(['truth', 'covered_clt', 'ci_length_clt',
-                  'naive_pvalues', 'covered_naive', 'ci_length_naive'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
@@ -47,8 +40,9 @@ def test_marginalize(s=3,
                     subgrad =True,
                     parametric=True,
                     intervals='old',
-                    level=0.95,
+                    level=0.90,
                     linear_func=None):
+
     print(n,p,s)
 
     if randomizer == 'laplace':
@@ -73,7 +67,6 @@ def test_marginalize(s=3,
         lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
     epsilon = 1. / np.sqrt(n)
-
     W = lam_frac*np.ones(p)*lam
     #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
@@ -118,6 +111,8 @@ def test_marginalize(s=3,
                views[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
+        linear_func = X_new[active_union]
+
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      queries,
@@ -135,14 +130,12 @@ def test_marginalize(s=3,
             #                                            parameter=true_vec,
             #                                            sample=target_sample)
 
-            from selection.distributions.intervals import intervals_from_sample
-            linear_func = X_new[active_union]
             intervals_instance = intervals_from_sample(reference=target_observed,
                                                        sample=target_sample,
                                                        observed=target_observed,
                                                        covariance=target_sampler.target_cov)
 
-            LU_prediction = intervals_instance.confidence_interval(linear_func=linear_func, level=level)
+            LU_prediction_sel = intervals_instance.confidence_interval(linear_func=linear_func, level=level)
 
         elif intervals=='new':
             full_sample = target_sampler.sample(ndraw=ndraw,
@@ -154,53 +147,30 @@ def test_marginalize(s=3,
             pivots = target_sampler.coefficient_pvalues_translate(target_observed,
                                                                     parameter=true_vec,
                                                                     sample=full_sample)
+            raise Exception('new intervals not implemented for prediction')
 
+        true_prediction_mean = np.dot(linear_func, true_vec)
         def coverage(LU):
-            L, U = LU[:, 0], LU[:, 1]
-            covered = np.zeros(nactive)
-            ci_length = np.zeros(nactive)
-
-            for j in range(nactive):
-                if check_screen:
-                    if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
-                        covered[j] = 1
-                else:
-                    covered[j] = None
-                ci_length[j] = U[j] - L[j]
+            L, U = LU[0], LU[1]
+            covered = 0
+            if (L <= true_prediction_mean) and (U >= true_prediction_mean):
+                covered = 1
+            ci_length = U - L
             return covered, ci_length
 
-        #covered, ci_length = coverage(LU)
-        #LU_naive = naive_confidence_intervals(target_sampler, target_observed)
-        #covered_naive, ci_length_naive = coverage(LU_naive)
-        #naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
-
-        true_linear = np.dot(linear_func, true_vec)
-        prediction_ci_cover = 0
-        prediction_ci_length = LU_prediction[1]-LU_prediction[0]
-        if (true_linear>=LU_prediction[0]) and (true_linear<=LU_prediction[1]):
-            prediction_ci_cover +=1
-
-        return prediction_ci_cover, prediction_ci_length
-        #return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
+        LU_prediction_naive = normal_interval(target_observed[:nactive],
+                                              target_sampler.target_cov[:nactive,:nactive],
+                                              linear_func, 1-level)
+        covered_sel, ci_length_sel = coverage(LU_prediction_sel)
+        covered_naive, ci_length_naive = coverage(LU_prediction_naive)
 
 
-def report(niter=50, **kwargs):
-
-    condition_report = reports.reports['test_marginalize']
-    runs = reports.collect_multiple_runs(condition_report['test'],
-                                         condition_report['columns'],
-                                         niter,
-                                         reports.summarize_all,
-                                         **kwargs)
-
-    fig = reports.pivot_plot_plus_naive(runs)
-    #fig = reports.pivot_plot_2in1(runs,color='b', label='marginalized subgradient')
-    fig.suptitle('Randomized Lasso marginalized subgradient')
-    fig.savefig('marginalized_subgrad_pivots.pdf')
+        return (covered_sel, ci_length_sel), (covered_naive, ci_length_naive)
 
 
 if __name__ == '__main__':
-    cover_sample = []
+    sel_sample = []
+    naive_sample = []
     length_sample = []
     niters = 100
 
@@ -208,8 +178,9 @@ if __name__ == '__main__':
         print("iteration", i)
         result = test_marginalize()[1]
         if result is not None:
-            print(result)
-            cover_sample.append(result[0])
-            length_sample.append(result[1])
-            print("average coverage", np.mean(cover_sample))
-            print("average length", np.mean(length_sample))
+            sel_sample.append(result[0])
+            naive_sample.append(result[1])
+            print("selective coverage", np.mean([sel_sample[i][0] for i in range(len(sel_sample))]))
+            print("selective length", np.mean([sel_sample[i][1] for i in range(len(sel_sample))]))
+            print("naive coverage", np.mean([naive_sample[i][0] for i in range(len(naive_sample))]))
+            print("naive length", np.mean([naive_sample[i][1] for i in range(len(naive_sample))]))

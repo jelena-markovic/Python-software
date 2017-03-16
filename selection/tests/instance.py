@@ -78,6 +78,7 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
         X -= X.mean(0)[None,:]
     if scale:
         X /= (X.std(0)[None,:] * np.sqrt(n))
+
     beta = np.zeros(p)
     beta[:s] = snr 
     if random_signs:

@@ -2,6 +2,7 @@ import functools # for bootstrap partial mapping
 
 import numpy as np
 from regreg.api import glm
+from scipy.stats import norm as ndist
 
 from .M_estimator import restricted_Mest, M_estimator, M_estimator_split
 from .greedy_step import greedy_score_step
@@ -349,6 +350,14 @@ class split_glm_group_lasso(M_estimator_split):
         return bootstrap_score
 
 
+class split_glm_group_lasso_parametric(M_estimator_split):
+
+    def setup_sampler(self, scaling=1., solve_args={'min_its': 50, 'tol': 1.e-10}):
+        M_estimator_split.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+
+        return self.selection_variable['variables']
+
+
 class glm_group_lasso_parametric(M_estimator):
 
     # this setup_sampler returns only the active set
@@ -548,7 +557,6 @@ def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
     sampler = lambda: np.random.choice(size, size=(size,), replace=True)
     target_cov = bootstrap_cov(sampler, boot_target_restricted)
 
-    from scipy.stats import norm as ndist
     quantile = - ndist.ppf(alpha / float(2))
     LU = np.zeros((2, target_observed.shape[0]))
     for j in range(observed.shape[0]):
@@ -566,3 +574,29 @@ def standard_ci_sm(X, y, active, leftout_indices, alpha=0.1):
     result = logit.fit(disp=0)
     LU = result.conf_int(alpha=alpha)
     return LU.T
+
+
+def normal_interval(observed, cov, linear_func, alpha):
+    quantile = - ndist.ppf(alpha / float(2))
+    LU = np.zeros(2)
+    sigma = np.sqrt(linear_func.T.dot(np.dot(cov, linear_func)))
+    observed_linear_comb = linear_func.T.dot(observed)
+    LU[0] = observed_linear_comb - sigma * quantile
+    LU[1] = observed_linear_comb + sigma * quantile
+    return LU
+
+
+def split_interval(loss, active, linear_func, alpha, parametric):
+    nactive = np.sum(active)
+    X, _ = loss.data
+    size = np.sum(X.shape[0])
+    observed = restricted_Mest(loss, active)
+    if parametric == True:
+        target_cov = _parametric_cov_glm(loss, active)[:nactive, :nactive]
+    else:
+        boot_target, target_observed = pairs_bootstrap_glm(loss, active)
+        boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
+        sampler = lambda: np.random.choice(size, size=(size,), replace=True)
+        target_cov = bootstrap_cov(sampler, boot_target_restricted)
+
+    return normal_interval(observed, target_cov, linear_func, alpha=alpha)
