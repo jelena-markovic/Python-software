@@ -1,7 +1,7 @@
 import numpy as np
 import regreg.api as rr
 
-from selection.randomized.glm import pairs_bootstrap_glm, bootstrap_cov
+from selection.randomized.glm import pairs_bootstrap_glm, bootstrap_cov, _parametric_cov_glm
 from ..sampling.langevin import projected_langevin
 from ..distributions.api import discrete_family, intervals_from_sample
 
@@ -294,16 +294,23 @@ class M_estimator(object):
         return opt_grad #- self.grad_log_jacobian(opt_state)
 
     def setup_sampler(self, score_mean,
+                      parametric = False,
                       scaling=1, solve_args={'min_its':20, 'tol':1.e-10}):
 
         X, _ = self.loss.data
         n = X.shape[0]
-        bootstrap_score = pairs_bootstrap_glm(self.loss,
+        if (parametric==False):
+            bootstrap_score = pairs_bootstrap_glm(self.loss,
                                               self._overall,
                                               beta_full=self._beta_full,
                                               inactive=~self._overall)[0]
+            score_cov = bootstrap_cov(lambda: np.random.choice(n, size=(n,), replace=True), bootstrap_score)
+        else:
+            score_cov = _parametric_cov_glm(self.loss,
+                                            self._overall,
+                                            beta_full=self._beta_full,
+                                            inactive=~self._overall)
 
-        score_cov = bootstrap_cov(lambda: np.random.choice(n, size=(n,), replace=True), bootstrap_score)
         self.score_cov = score_cov
         self.score_cov_inv = np.linalg.inv(self.score_cov)
 
@@ -315,6 +322,7 @@ class M_estimator(object):
         #print(self.reference)
         nactive = self._overall.sum()
         self.target_cov = self.score_cov[:nactive,:nactive]
+
 
     def reconstruction_map(self, opt_state):
 
