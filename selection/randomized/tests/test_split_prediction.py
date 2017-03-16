@@ -24,11 +24,11 @@ from selection.distributions.intervals import intervals_from_sample
 @wait_for_return_value()
 def test_split_prediction(s=3,
                        n=200,
-                       p=100,
+                       p=50,
                        snr = 10,
                        rho = 0.6,
-                       split_frac = 0.7,
-                       lam_frac = 4.,
+                       split_frac = 0.8,
+                       lam_frac = 3.,
                        ndraw=10000, burnin=2000,
                        intervals = 'old',
                        randomizer = 'gaussian',
@@ -65,7 +65,7 @@ def test_split_prediction(s=3,
     nonzero = np.where(beta)[0]
     epsilon = 1./np.sqrt(n)
 
-    W = np.ones(p)*lam
+    W = lam_frac*lam*np.ones(p)
     # W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)

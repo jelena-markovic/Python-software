@@ -40,7 +40,7 @@ def test_marginalize(s=3,
                     subgrad =True,
                     parametric=True,
                     intervals='old',
-                    level=0.90,
+                    level=0.95,
                     linear_func=None):
 
     print(n,p,s)
