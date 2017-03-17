@@ -24,12 +24,13 @@ from selection.randomized.glm import normal_interval
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_marginalize(s=3,
+def test_prediction(s=3,
                     n=100,
                     p=200,
                     rho=0.6,
                     snr=10,
-                    lam_frac = 4.,
+                    sigma= 1.,
+                    lam_frac = 6.,
                     ndraw=10000,
                     burnin=2000,
                     loss='gaussian',
@@ -41,7 +42,8 @@ def test_marginalize(s=3,
                     parametric=True,
                     intervals='old',
                     level=0.95,
-                    linear_func=None):
+                    linear_func=None,
+                    X_all = None):
 
     print(n,p,s)
 
@@ -53,14 +55,28 @@ def test_marginalize(s=3,
         randomizer = randomization.logistic((p,), scale=randomizer_scale)
 
     if loss=="gaussian":
-        X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n+1, p=p, s=s, rho=rho, snr=snr, sigma=1,
+        if X_all is None:
+            X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n+1, p=p, s=s, rho=rho, snr=snr, sigma=sigma,
                                                                equi_correlated=False, random_signs=False)
+        else:
+            beta = np.zeros(p)
+            beta[:s] = snr
+            y_all = X_all.dot(beta)+sigma*np.random.standard_normal(n+1)
+
         X, y = X_all[:n,:], y_all[:n]
         X_new, y_new = X_all[n,:], y_all[n]
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
         loss = rr.glm.gaussian(X, y)
     elif loss=="logistic":
-        X_all, y_all, beta, _ = logistic_instance(n=n+1, p=p, s=s, rho=rho, snr=snr, random_signs=False)
+        if X_all is None:
+            X_all, y_all, beta, _ = logistic_instance(n=n+1, p=p, s=s, rho=rho, snr=snr, random_signs=False)
+        else:
+            beta = np.zeros(p)
+            beta[:s] = snr
+            eta = np.dot(X_all, beta)
+            pi = np.exp(eta) / (1 + np.exp(eta))
+            y_all = np.random.binomial(1, pi)
+
         X, y = X_all[:n,:], y_all[:n]
         X_new, y_new = X_all[n,:], y_all[n]
         loss = rr.glm.logistic(X, y)
@@ -94,9 +110,6 @@ def test_marginalize(s=3,
 
     if set(nonzero).issubset(np.nonzero(active_union)[0]):
         check_screen=True
-
-        if nactive==s:
-            return None
 
         if scalings: # try condition on some scalings
             for i in range(nviews):
@@ -172,11 +185,28 @@ if __name__ == '__main__':
     sel_sample = []
     naive_sample = []
     length_sample = []
+    design = 'fixed'
     niters = 100
+    n = 100
+    p = 200
+    s = 3
+    snr = 10
+    rho = 0.6
+    loss = 'gaussian'
+
+    if design =="fixed":
+        if loss == "gaussian":
+            X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, sigma=1,
+                                                                   equi_correlated=False, random_signs=False)
+        elif loss == "logistic":
+            X_all, y_all, beta, _ = logistic_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, random_signs=False,
+                                                      equi_correlated=False)
+    else:
+        X_all = None
 
     for i in range(niters):
         print("iteration", i)
-        result = test_marginalize()[1]
+        result = test_prediction(n=n, p=p, s=s, snr=snr, X_all = X_all)[1]
         if result is not None:
             sel_sample.append(result[0])
             naive_sample.append(result[1])

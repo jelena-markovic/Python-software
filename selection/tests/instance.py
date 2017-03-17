@@ -72,7 +72,8 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
             cov = rho ** np.abs(np.subtract.outer(idx, idx))
             return cov, np.linalg.cholesky(cov)
         sigmaX, cholX = AR1(rho=rho, p=p)
-        X = np.random.standard_normal((n, p)).dot(cholX.T)
+        #X = np.random.standard_normal((n, p)).dot(cholX)
+        X = np.random.multivariate_normal(mean=np.zeros(p), cov = sigmaX, size = (n,))
 
     if center:
         X -= X.mean(0)[None,:]
@@ -100,7 +101,8 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
 
 def logistic_instance(n=100, p=200, s=7, rho=0.3, snr=14,
                       random_signs=False, 
-                      scale=True, center=True):
+                      scale=True, center=True,
+                      equi_correlated=True):
     """
     A testing instance for the LASSO.
     Design is equi-correlated in the population,
@@ -145,8 +147,19 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, snr=14,
 
     """
 
-    X = (np.sqrt(1-rho) * np.random.standard_normal((n,p)) + 
-        np.sqrt(rho) * np.random.standard_normal(n)[:,None])
+    if equi_correlated:
+        X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+             np.sqrt(rho) * np.random.standard_normal(n)[:, None])
+    else:
+        def AR1(rho, p):
+            idx = np.arange(p)
+            cov = rho ** np.abs(np.subtract.outer(idx, idx))
+            return cov, np.linalg.cholesky(cov)
+
+        sigmaX, cholX = AR1(rho=rho, p=p)
+        # X = np.random.standard_normal((n, p)).dot(cholX)
+        X = np.random.multivariate_normal(mean=np.zeros(p), cov=sigmaX, size=(n,))
+
     if center:
         X -= X.mean(0)[None,:]
     if scale:
@@ -160,7 +173,7 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, snr=14,
     active = np.zeros(p, np.bool)
     active[:s] = True
 
-    eta = linpred = np.dot(X, beta) 
+    eta = np.dot(X, beta)
     pi = np.exp(eta) / (1 + np.exp(eta))
 
     Y = np.random.binomial(1, pi)

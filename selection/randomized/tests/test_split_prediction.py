@@ -26,9 +26,10 @@ def test_split_prediction(s=3,
                        n=200,
                        p=50,
                        snr = 10,
-                       rho = 0.6,
+                       rho = 0.,
+                       sigma=1.,
                        split_frac = 0.8,
-                       lam_frac = 3.,
+                       lam_frac = 5.,
                        ndraw=10000, burnin=2000,
                        intervals = 'old',
                        randomizer = 'gaussian',
@@ -37,7 +38,8 @@ def test_split_prediction(s=3,
                        solve_args={'min_its':50, 'tol':1.e-10},
                        check_screen =True,
                        parametric=True,
-                       level = 0.90):
+                       level = 0.95,
+                       X_all=None):
 
     if randomizer == 'laplace':
         randomizer = randomization.laplace((p,), scale=randomizer_scale)
@@ -47,15 +49,29 @@ def test_split_prediction(s=3,
         randomizer = randomization.logistic((p,), scale=randomizer_scale)
 
     if loss == "gaussian":
-        X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, sigma=1,
-                                                               equi_correlated=False, random_signs=False)
+        if X_all is None:
+            X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, sigma=sigma,
+                                                                   equi_correlated=False, random_signs=False)
+        else:
+            beta = np.zeros(p)
+            beta[:s] = snr
+            y_all = X_all.dot(beta) + sigma * np.random.standard_normal(n + 1)
+
         X, y = X_all[:n, :], y_all[:n]
         X_new, y_new = X_all[n, :], y_all[n]
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
         loss = rr.glm.gaussian(X, y)
-        loss_rr = rr.glm.gaussian
+        loss_rr=rr.glm.gaussian
     elif loss == "logistic":
-        X_all, y_all, beta, _ = logistic_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, random_signs=False)
+        if X_all is None:
+            X_all, y_all, beta, _ = logistic_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, random_signs=False)
+        else:
+            beta = np.zeros(p)
+            beta[:s] = snr
+            eta = np.dot(X_all, beta)
+            pi = np.exp(eta) / (1 + np.exp(eta))
+            y_all = np.random.binomial(1, pi)
+
         X, y = X_all[:n, :], y_all[:n]
         X_new, y_new = X_all[n, :], y_all[n]
         loss = rr.glm.logistic(X, y)
@@ -161,13 +177,34 @@ def test_split_prediction(s=3,
 
 
 if __name__=='__main__':
+
     niters = 100
     selective_sample = []
     split_sample = []
     naive_sample = []
+
+    design = 'fixed'
+    niters = 100
+    n = 100
+    p = 20
+    s = 3
+    snr = 10
+    rho = 0.6
+    loss = 'gaussian'
+
+    if design == "fixed":
+        if loss == "gaussian":
+            X_all, y_all, beta, nonzero, sigma = gaussian_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, sigma=1,
+                                                                   equi_correlated=False, random_signs=False)
+        elif loss == "logistic":
+            X_all, y_all, beta, _ = logistic_instance(n=n + 1, p=p, s=s, rho=rho, snr=snr, random_signs=False,
+                                                      equi_correlated=False)
+    else:
+        X_all = None
+
     for i in range(niters):
         print("iteration", i)
-        result = test_split_prediction()[1]
+        result = test_split_prediction(n=n, p=p, s=s, snr=snr, rho=rho, X_all=X_all)[1]
         if result is not None:
             sel, naive, split = result
             selective_sample.append(sel)
