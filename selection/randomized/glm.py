@@ -580,6 +580,7 @@ def normal_interval(observed, cov, linear_func, alpha):
     quantile = - ndist.ppf(alpha / float(2))
     LU = np.zeros(2)
     sigma = np.sqrt(linear_func.T.dot(np.dot(cov, linear_func)))
+    print(sigma)
     observed_linear_comb = linear_func.T.dot(observed)
     LU[0] = observed_linear_comb - sigma * quantile
     LU[1] = observed_linear_comb + sigma * quantile

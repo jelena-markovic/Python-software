@@ -72,8 +72,9 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
             cov = rho ** np.abs(np.subtract.outer(idx, idx))
             return cov, np.linalg.cholesky(cov)
         sigmaX, cholX = AR1(rho=rho, p=p)
-        #X = np.random.standard_normal((n, p)).dot(cholX)
-        X = np.random.multivariate_normal(mean=np.zeros(p), cov = sigmaX, size = (n,))
+        X = np.random.standard_normal((n, p)).dot(cholX.T)
+        #X = np.random.multivariate_normal(mean=np.zeros(p), cov = sigmaX, size = (n,))
+        #print(X.shape)
 
     if center:
         X -= X.mean(0)[None,:]

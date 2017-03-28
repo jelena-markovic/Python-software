@@ -28,7 +28,7 @@ def test_split_prediction(s=3,
                        snr = 10,
                        rho = 0.,
                        sigma=1.,
-                       split_frac = 0.8,
+                       split_frac = 0.7,
                        lam_frac = 5.,
                        ndraw=10000, burnin=2000,
                        intervals = 'old',
@@ -184,7 +184,6 @@ if __name__=='__main__':
     naive_sample = []
 
     design = 'fixed'
-    niters = 100
     n = 100
     p = 20
     s = 3

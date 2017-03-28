@@ -30,18 +30,18 @@ def test_prediction(s=3,
                     rho=0.6,
                     snr=10,
                     sigma= 1.,
-                    lam_frac = 6.,
+                    lam_frac = 4.,
                     ndraw=10000,
                     burnin=2000,
                     loss='gaussian',
                     randomizer = 'gaussian',
-                    randomizer_scale = 1.,
+                    randomizer_scale = 1.5,
                     nviews=1,
                     scalings=False,
                     subgrad =True,
                     parametric=True,
                     intervals='old',
-                    level=0.95,
+                    level=0.90,
                     linear_func=None,
                     X_all = None):
 
@@ -117,10 +117,6 @@ def test_prediction(s=3,
                 views[i].condition_on_scalings()
         if subgrad:
             for i in range(nviews):
-               conditioning_groups = np.zeros(p,dtype=bool)
-               conditioning_groups[:(p/2)] = True
-               marginalizing_groups = np.zeros(p, dtype=bool)
-               marginalizing_groups[(p/2):] = True
                views[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
@@ -171,8 +167,8 @@ def test_prediction(s=3,
             ci_length = U - L
             return covered, ci_length
 
-        LU_prediction_naive = normal_interval(target_observed[:nactive],
-                                              target_sampler.target_cov[:nactive,:nactive],
+        LU_prediction_naive = normal_interval(target_observed,
+                                              target_sampler.target_cov,
                                               linear_func, 1-level)
         covered_sel, ci_length_sel = coverage(LU_prediction_sel)
         covered_naive, ci_length_naive = coverage(LU_prediction_naive)
@@ -182,11 +178,13 @@ def test_prediction(s=3,
 
 
 if __name__ == '__main__':
+
+    niters = 100
     sel_sample = []
     naive_sample = []
     length_sample = []
-    design = 'fixed'
-    niters = 100
+
+    design = 'random'
     n = 100
     p = 200
     s = 3
@@ -206,7 +204,7 @@ if __name__ == '__main__':
 
     for i in range(niters):
         print("iteration", i)
-        result = test_prediction(n=n, p=p, s=s, snr=snr, X_all = X_all)[1]
+        result = test_prediction(n=n, p=p, s=s, snr=snr, rho=rho, sigma=1., X_all = X_all)[1]
         if result is not None:
             sel_sample.append(result[0])
             naive_sample.append(result[1])
