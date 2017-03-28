@@ -437,17 +437,19 @@ def compute_lengths(multiple_results):
 
 def compute_length_frac(multiple_results):
     result = {}
-    if 'ci_length_clt' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_clt' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         clt = multiple_results['ci_length_clt']
-        split = split[~np.isnan(clt)]
-        clt = clt[~np.isnan(clt)]
+        valid = ~np.isnan(clt)
+        split = split[valid]
+        clt = clt[valid]
         result['split/clt'] = np.median(np.divide(split, clt))
-    if 'ci_length_boot' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_boot' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         boot = multiple_results['ci_length_boot']
-        split = split[~np.isnan(boot)]
-        boot = clt[~np.isnan(boot)]
+        valid = ~np.isnan(boot)
+        split = split[valid]
+        boot = boot[valid]
         result['split/boot'] = np.median(np.divide(split, boot))
     return result
 
