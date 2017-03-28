@@ -2,25 +2,24 @@ from __future__ import print_function
 import numpy as np
 
 import regreg.api as rr
+import pandas as pd
 
 import selection.tests.reports as reports
 
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
-from selection.api import (randomization, 
-                           split_glm_group_lasso, 
+from selection.api import (split_glm_group_lasso,
                            multiple_queries, 
                            glm_target)
-from selection.tests.instance import logistic_instance
+from selection.tests.instance import logistic_instance, gaussian_instance
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
-from selection.randomized.glm import standard_ci, standard_ci_sm 
-from selection.randomized.query import naive_confidence_intervals
+from selection.randomized.glm import split_inference
+from selection.randomized.query import naive_confidence_intervals, naive_pvalues
 
-@register_report(['pivots_clt', 'pivots_boot', 
-                  'covered_clt', 'ci_length_clt', 
-                  'covered_boot', 'ci_length_boot', 
-                  'covered_split', 'ci_length_split', 
-                  'active', 'covered_naive'])
+@register_report(['pivots_clt', 'pivots_boot', 'pivots_naive', 'pivots_split',
+                  'covered_clt', 'covered_boot', 'covered_naive', 'covered_split',
+                  'ci_length_clt', 'ci_length_boot', 'ci_length_naive', 'ci_length_split',
+                  'active'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_split_compare(s=3,
@@ -30,20 +29,29 @@ def test_split_compare(s=3,
                        rho=0.1,
                        split_frac=0.8,
                        lam_frac=0.7,
-                       ndraw=10000, burnin=2000,
-                       intervals = 'new',
-                       solve_args={'min_its':50, 'tol':1.e-10}, check_screen =True):
+                       loss="logistic",
+                       ndraw = 10000, burnin=2000,
+                       intervals = 'old',
+                       solve_args={'min_its':50, 'tol':1.e-10},
+                       check_screen =True):
 
-    X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+    if loss == "gaussian":
+        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
+        loss = rr.glm.gaussian(X, y)
+        glm_loss = rr.glm.gaussian
+    elif loss == "logistic":
+        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+        loss = rr.glm.logistic(X, y)
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
+        glm_loss = rr.glm.logistic
 
     nonzero = np.where(beta)[0]
 
-    loss = rr.glm.logistic(X, y)
-    epsilon = 1.
+    epsilon = 1./np.sqrt(n)
 
-    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
-    W = np.ones(p)*lam
-    W[0] = 0 # use at least some unpenalized
+    W = np.ones(p)*lam* lam_frac
+    #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
@@ -122,13 +130,17 @@ def test_split_compare(s=3,
                                                                   parameter=true_vec,
                                                                   sample=full_sample)
 
+
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
+        pivots_naive = naive_pvalues(target_sampler, target_observed, true_vec)
 
         if X.shape[0] - leftout_indices.sum() > nactive:
-            LU_split = standard_ci(X, y, active_union, leftout_indices)
-            LU_split_sm = standard_ci_sm(X, y, active_union, leftout_indices)
+            split = split_inference(glm_loss, X, y, active_union, leftout_indices)
+            LU_split = split.ci()
+            pivots_split = split.pvalues(parameter=true_vec)
         else:
-            LU_split = LU_split_sm = np.ones((nactive, 2)) * np.nan
+            LU_split = np.ones((nactive, 2)) * np.nan
+            pivots_split = np.ones(nactive) * np.nan
 
         def coverage(LU):
             L, U = LU[:,0], LU[:,1]
@@ -153,13 +165,17 @@ def test_split_compare(s=3,
         for j in range(nactive):
             active_var[j] = active_set[j] in nonzero
 
-        return pivots, pivots_boot, covered, ci_length, covered_boot, ci_length_boot, \
-               covered_split, ci_length_split, active_var, covered_naive, ci_length_naive
+        return pivots, pivots_boot, pivots_naive, pivots_split, \
+               covered, covered_boot, covered_naive, covered_split, \
+               ci_length, ci_length_boot, ci_length_naive, ci_length_split, \
+               active_var
 
 
-def report(niter=3, **kwargs):
 
-    kwargs = {'s': 0, 'n': 300, 'p': 20, 'snr': 7, 'split_frac': 0.8, 'intervals':'old'}
+def report(niter=1, **kwargs):
+    kwargs = {'s': 0, 'n': 300, 'p': 50, 'rho': 0., 'snr': 7,
+              'split_frac': 0.8, 'intervals': 'old', 'lam_frac': 0.7,
+              'loss': "logistic"}
     split_report = reports.reports['test_split_compare']
     screened_results = reports.collect_multiple_runs(split_report['test'],
                                                      split_report['columns'],
@@ -167,8 +183,12 @@ def report(niter=3, **kwargs):
                                                      reports.summarize_all,
                                                      **kwargs)
 
-    fig = reports.boot_clt_plot(screened_results, inactive=True, active=False)
-    fig.savefig('split_compare_pivots.pdf') # will have both bootstrap and CLT on plot
+    screened_results.to_pickle("split_compare.pkl")
+    results = pd.read_pickle("split_compare.pkl")
+
+    fig = reports.boot_clt_plot(results)
+    fig.suptitle("Data splitting and data carving", fontsize=20)
+    fig.savefig('split_compare.pdf')  # will have both bootstrap and CLT on plot
 
 
 if __name__=='__main__':

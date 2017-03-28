@@ -307,7 +307,8 @@ def pivot_plot(multiple_results, coverage=True, color='b', label=None, fig=None)
 
     return fig
 
-def boot_clt_plot(multiple_results, coverage=True, label=None, fig=None, active=True, inactive=True):
+def boot_clt_plot(multiple_results, coverage=True, label=None, fig=None, active=True, inactive=True,
+                  naive=True, split=True):
     """
     Extract pivots at truth and mle.
     """
@@ -326,20 +327,34 @@ def boot_clt_plot(multiple_results, coverage=True, label=None, fig=None, active=
 
     ecdf_clt = sm.distributions.ECDF(multiple_results['pivots_clt'])
     G = np.linspace(0, 1)
-    F_MLE = ecdf_clt(G)
-    ax.plot(G, F_MLE, '-o', c='b', lw=2, label='CLT')
+    F_clt = ecdf_clt(G)
+    ax.plot(G, F_clt, '-o', c='b', lw=2, label='CLT')
     ax.plot([0, 1], [0, 1], 'k-', lw=2)
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
+    ax.set_xlabel("Observed pivot values", fontsize=20)
+    ax.set_ylabel("Empirical cdf", fontsize=20)
 
     ecdf_boot = sm.distributions.ECDF(multiple_results['pivots_boot'])
-    F_true = ecdf_boot(G)
-    ax.plot(G, F_true, '-o', c='g', lw=2, label='Bootstrap')
+    F_boot = ecdf_boot(G)
+    ax.plot(G, F_boot, '-o', c='g', lw=2, label='Bootstrap')
     ax.plot([0, 1], [0, 1], 'k-', lw=2)
-    ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
+
+    if (naive==True) and ('pivots_naive' in multiple_results.columns):
+        ecdf_naive = sm.distributions.ECDF(multiple_results['pivots_naive'])
+        F_naive = ecdf_naive(G)
+        ax.plot(G, F_naive, '-o', c='r', lw=2, label='Naive')
+        ax.plot([0, 1], [0, 1], 'k-', lw=2)
+
+    if (split == True) and ('pivots_split' in multiple_results.columns):
+        ecdf_split = sm.distributions.ECDF(multiple_results['pivots_split'])
+        F_split = ecdf_split(G)
+        ax.plot(G, F_split, '-o', c='k', lw=2, label='Split')
+        ax.plot([0, 1], [0, 1], 'k-', lw=2)
+
     ax.legend(loc='lower right')
     #plot_pvalues_boot.legend(loc='lower right')
+
 
     if coverage:
         if 'covered_split' in multiple_results.columns:
@@ -366,13 +381,24 @@ def boot_clt_pivots(multiple_results):
     pivot_summary = {}
     if 'pivots_clt' in multiple_results.columns:
         pivots_clt = multiple_results['pivots_clt']
-        pivot_summary['pivots_clt'] = {'CLT pivots (mean, SD, type I):': (np.mean(pivots_clt), np.std(pivots_clt), np.mean(pivots_clt < 0.05))}
+        pivot_summary['pivots_clt'] =\
+            {'CLT pivots (mean, SD, type I):':(np.mean(pivots_clt), np.std(pivots_clt), np.mean(pivots_clt < 0.05))}
     if 'pivots_boot' in multiple_results.columns:
         pivots_boot = multiple_results['pivots_boot']
-        pivot_summary['pivots_boot'] = {'Bootstrap pivots (mean, SD, type I):': (np.mean(pivots_boot), np.std(pivots_boot), np.mean(pivots_boot < 0.05))}
+        pivot_summary['pivots_boot'] = \
+            {'Bootstrap pivots (mean, SD, type I):': (np.mean(pivots_boot), np.std(pivots_boot), np.mean(pivots_boot < 0.05))}
     if 'pivot' in multiple_results.columns:
         pivots = multiple_results['pivot']
-        pivot_summary['pivots'] = {'pivots (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+        pivot_summary['pivots'] = \
+            {'pivots (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    if 'pivots_naive' in multiple_results.columns:
+        pivots_naive = multiple_results['pivots_naive']
+        pivot_summary['pivots_naive'] = \
+            {'Naive pivots (mean, SD, type I):': (np.mean(pivots_naive), np.std(pivots_naive), np.mean(pivots_naive < 0.05))}
+    if 'pivots_split' in multiple_results.columns:
+        pivots_split = multiple_results['pivots_split']
+        pivot_summary['pivots_split'] = \
+            {'Split pivots (mean, SD, type I):': (np.mean(pivots_split), np.std(pivots_split), np.mean(pivots_split < 0.05))}
 
     return pivot_summary
 

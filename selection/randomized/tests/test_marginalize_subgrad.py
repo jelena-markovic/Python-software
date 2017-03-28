@@ -39,9 +39,10 @@ def test_marginalize(s=0,
                     lam_frac = 2.5,
                     ndraw=10000,
                     burnin=2000,
-                    loss='gaussian',
+                    loss='logistic',
                     randomizer = 'gaussian',
                     randomizer_scale = 1.,
+                    bootstrap=False,
                     nviews=3,
                     scalings=False,
                     subgrad =True,
@@ -63,7 +64,7 @@ def test_marginalize(s=0,
     elif loss=="logistic":
         X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
         loss = rr.glm.logistic(X, y)
-        lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
     epsilon = 1. / np.sqrt(n)
 
@@ -114,7 +115,7 @@ def test_marginalize(s=0,
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      queries,
-                                                     bootstrap=False,
+                                                     bootstrap=bootstrap,
                                                      parametric=parametric)
                                                      #reference= beta[active_union])
 
@@ -170,6 +171,10 @@ def test_marginalize(s=0,
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
 
 def report(niter=50, **kwargs):
+
+    kwargs = {'s': 0, 'n': 300, 'p': 50, 'rho': 0, 'snr': 7,
+              'nviews': 3, 'intervals': 'old', 'lam_frac': 1.,
+              'randomizer': "laplace", 'loss': "logistic", 'bootstrap':"False"}
 
     condition_report = reports.reports['test_marginalize']
     runs = reports.collect_multiple_runs(condition_report['test'],

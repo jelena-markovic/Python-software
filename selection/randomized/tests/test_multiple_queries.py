@@ -38,10 +38,10 @@ def test_multiple_queries(s=3,
     nonzero = np.where(beta)[0]
 
     loss = rr.glm.logistic(X, y)
-    epsilon = 1.
+    epsilon = 1./np.sqrt(n)
 
     lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
-    W = np.ones(p)*lam
+    W = np.ones(p)*lam*lam_frac
     #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)

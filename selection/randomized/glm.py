@@ -6,7 +6,7 @@ from regreg.api import glm
 from .M_estimator import restricted_Mest, M_estimator, M_estimator_split
 from .greedy_step import greedy_score_step
 from .threshold_score import threshold_score
-
+from scipy.stats import norm as ndist
 from regreg.api import glm
 
 def pairs_bootstrap_glm(glm_loss,
@@ -535,27 +535,36 @@ def glm_parametric_covariance(glm_loss, solve_args={'min_its':50, 'tol':1.e-10})
     return functools.partial(parametric_cov, glm_loss, solve_args=solve_args)
 
 
-def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
+class split_inference(object):
 
-    import regreg.api as rr
+    def __init__(self, glm_loss, X, y, active, leftout_indices, alpha=0.1):
+        loss = glm_loss(X[leftout_indices,:], y[leftout_indices])
+        boot_target, target_observed = pairs_bootstrap_glm(loss, active)
+        nactive = np.sum(active)
+        size = np.sum(leftout_indices)
+        self.observed = target_observed[:nactive]
+        boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
+        sampler = lambda: np.random.choice(size, size=(size,), replace=True)
+        self.target_cov = bootstrap_cov(sampler, boot_target_restricted)
+        self.quantile = - ndist.ppf(alpha / float(2))
 
-    loss = glm_loss(X[leftout_indices, ], y[leftout_indices])
-    boot_target, target_observed = pairs_bootstrap_glm(loss, active)
-    nactive = np.sum(active)
-    size= np.sum(leftout_indices)
-    observed = target_observed[:nactive]
-    boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
-    sampler = lambda: np.random.choice(size, size=(size,), replace=True)
-    target_cov = bootstrap_cov(sampler, boot_target_restricted)
+    def ci(self):
+        LU = np.zeros((2, self.observed.shape[0]))
+        for j in range(self.observed.shape[0]):
+            sigma = np.sqrt(self.target_cov[j, j])
+            LU[0, j] = self.observed[j] - sigma * self.quantile
+            LU[1, j] = self.observed[j] + sigma * self.quantile
+        return LU.T
 
-    from scipy.stats import norm as ndist
-    quantile = - ndist.ppf(alpha / float(2))
-    LU = np.zeros((2, target_observed.shape[0]))
-    for j in range(observed.shape[0]):
-        sigma = np.sqrt(target_cov[j, j])
-        LU[0, j] = observed[j] - sigma * quantile
-        LU[1, j] = observed[j] + sigma * quantile
-    return LU.T
+    def pvalues(self, parameter=None):
+        if parameter is None:
+            parameter=np.zeros(self.observed.shape[0])
+        pvalues = np.zeros(self.observed.shape[0])
+        for j in range(self.observed.shape[0]):
+            sigma = np.sqrt(self.target_cov[j, j])
+            pval = ndist.cdf((self.observed[j] - parameter[j]) / sigma)
+            pvalues[j] = 2*min(pval, 1-pval)
+        return pvalues
 
 
 def standard_ci_sm(X, y, active, leftout_indices, alpha=0.1):

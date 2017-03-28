@@ -4,22 +4,22 @@ import numpy as np
 import regreg.api as rr
 
 import selection.tests.reports as reports
-
+import pandas as pd
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
 from selection.api import (randomization,
                            glm_group_lasso,
                            multiple_queries,
                            glm_target)
-from selection.tests.instance import logistic_instance
+from selection.tests.instance import logistic_instance, gaussian_instance
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
-from selection.randomized.glm import standard_ci, standard_ci_sm
-from selection.randomized.query import naive_confidence_intervals
+from selection.randomized.query import naive_confidence_intervals, naive_pvalues
 
 @register_report(['pivots_clt', 'pivots_boot',
                   'covered_clt', 'ci_length_clt',
                   'covered_boot', 'ci_length_boot',
-                  'active', 'covered_naive'])
+                  'active',
+                   'pivots_naive','covered_naive', 'ci_length_naive'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_multiple_queries(s=3,
@@ -28,25 +28,38 @@ def test_multiple_queries(s=3,
                          snr=7,
                          rho=0.1,
                          lam_frac=0.7,
-                         nviews=4,
-                         intervals ='new',
+                         nviews = 4,
+                         intervals ='old',
+                         loss ='logistic',
+                         randomizer = 'laplace',
+                         randomizer_scale = 1.,
                          ndraw=10000, burnin=2000,
-                         solve_args={'min_its':50, 'tol':1.e-10}, check_screen =True):
+                         solve_args={'min_its':50, 'tol':1.e-10},
+                         check_screen =True,
+                         subgrad=True):
+    if loss == "gaussian":
+        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
+        loss = rr.glm.gaussian(X, y)
+    elif loss == "logistic":
+        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+        loss = rr.glm.logistic(X, y)
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
-    randomizer = randomization.laplace((p,), scale=1)
-    X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+    if randomizer == 'laplace':
+        randomizer = randomization.laplace((p,), scale=randomizer_scale)
+    elif randomizer == 'gaussian':
+        randomizer = randomization.isotropic_gaussian((p,), randomizer_scale)
+    elif randomizer == 'logistic':
+        randomizer = randomization.logistic((p,), scale=randomizer_scale)
 
     nonzero = np.where(beta)[0]
+    epsilon = 1./np.sqrt(n)
 
-    loss = rr.glm.logistic(X, y)
-    epsilon = 1.
-
-    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
-    W = np.ones(p)*lam
-    W[0] = 0 # use at least some unpenalized
+    W = np.ones(p)*lam *lam_frac
+    #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
-
 
     view = []
     for i in range(nviews):
@@ -72,6 +85,10 @@ def test_multiple_queries(s=3,
     if True:
         active_set = np.nonzero(active_union)[0]
         true_vec = beta[active_union]
+
+        if subgrad:
+            for i in range(nviews):
+               view[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         ## bootstrap
         target_sampler_boot, target_observed = glm_target(loss,
@@ -125,6 +142,7 @@ def test_multiple_queries(s=3,
                                                                   sample=full_sample)
 
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
+        naive_pivots = naive_pvalues(target_sampler, target_observed, true_vec)
 
 
         def coverage(LU):
@@ -150,12 +168,15 @@ def test_multiple_queries(s=3,
             active_var[j] = active_set[j] in nonzero
 
         return pivots, pivots_boot, covered, ci_length, covered_boot, ci_length_boot, \
-                active_var, covered_naive, ci_length_naive
+                active_var, naive_pivots, covered_naive, ci_length_naive
 
 
-def report(niter=10, **kwargs):
+def report(niter=1, **kwargs):
 
-    kwargs = {'s': 0, 'n': 300, 'p': 10, 'snr': 7, 'nviews':3, 'intervals':'old'}
+    kwargs = {'s': 0, 'n': 300, 'p': 50, 'rho': 0., 'snr': 7,
+              'nviews': 3, 'intervals': 'old', 'lam_frac': 1.5,
+              'randomizer': "laplace", 'loss': "logistic"}
+
     split_report = reports.reports['test_multiple_queries']
     screened_results = reports.collect_multiple_runs(split_report['test'],
                                                      split_report['columns'],
@@ -163,8 +184,12 @@ def report(niter=10, **kwargs):
                                                      reports.summarize_all,
                                                      **kwargs)
 
-    fig = reports.boot_clt_plot(screened_results, inactive=True, active=False)
-    fig.savefig('multiple_queries_CI.pdf') # will have both bootstrap and CLT on plot
+    screened_results.to_pickle("multiple_queries.pkl")
+    results = pd.read_pickle("multiple_queries.pkl")
+
+    fig = reports.boot_clt_plot(results)
+    fig.suptitle("Multiple queries on the data", fontsize=20)
+    fig.savefig('multiple_queries.pdf')  # will have both bootstrap and CLT on plot
 
 
 if __name__=='__main__':

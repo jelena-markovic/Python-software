@@ -4,46 +4,50 @@ import numpy as np
 import regreg.api as rr
 
 import selection.tests.reports as reports
+import pandas as pd
 
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
-from selection.api import (randomization,
-                           split_glm_group_lasso,
+from selection.api import (split_glm_group_lasso,
                            multiple_queries,
                            glm_target)
-from selection.tests.instance import logistic_instance
+from selection.tests.instance import gaussian_instance, logistic_instance
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
-from selection.randomized.glm import standard_ci, standard_ci_sm
-from selection.randomized.query import naive_confidence_intervals
+from selection.randomized.query import (naive_confidence_intervals, naive_pvalues)
 
-@register_report(['pivots_clt', 'pivots_boot',
-                  'covered_clt', 'ci_length_clt',
-                  'covered_boot', 'ci_length_boot',
-                  'active', 'covered_naive'])
+@register_report(['pivots_clt', 'pivots_boot', 'pivots_naive',
+                  'covered_clt', 'covered_boot', 'covered_naive',
+                  'ci_length_clt', 'ci_length_boot', 'ci_length_naive',
+                  'active'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_multiple_splits(s=3,
                          n=300,
                          p=20,
                          snr=7,
-                         rho=0.1,
+                         rho=0.,
                          split_frac=0.8,
-                         lam_frac=0.7,
+                         lam_frac=2.,
                          nsplits=4,
-                         intervals ='new',
+                         intervals ='old',
+                         loss="gaussian",
                          ndraw=10000, burnin=2000,
-                         solve_args={'min_its':50, 'tol':1.e-10}, check_screen =True):
+                         solve_args={'min_its':50, 'tol':1.e-10},
+                         check_screen =True):
+    if loss == "gaussian":
+        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1)
+        lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
+        loss = rr.glm.gaussian(X, y)
+    elif loss == "logistic":
+        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
+        loss = rr.glm.logistic(X, y)
+        lam =  np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
-    X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, snr=snr)
 
     nonzero = np.where(beta)[0]
-
-    loss = rr.glm.logistic(X, y)
-    epsilon = 1.
-
-    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
-    W = np.ones(p)*lam
-    W[0] = 0 # use at least some unpenalized
+    epsilon = 1./np.sqrt(n)
+    W = np.ones(p)*lam*lam_frac
+    #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
@@ -126,7 +130,7 @@ def test_multiple_splits(s=3,
                                                                   sample=full_sample)
 
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
-
+        naive_pivots = naive_pvalues(target_sampler, target_observed, true_vec)
 
         def coverage(LU):
             L, U = LU[:,0], LU[:,1]
@@ -150,13 +154,17 @@ def test_multiple_splits(s=3,
         for j in range(nactive):
             active_var[j] = active_set[j] in nonzero
 
-        return pivots, pivots_boot, covered, ci_length, covered_boot, ci_length_boot, \
-                active_var, covered_naive, ci_length_naive
+        return pivots, pivots_boot, naive_pivots, \
+               covered, covered_boot, covered_naive, \
+               ci_length, ci_length_boot, ci_length_naive, \
+               active_var
 
 
-def report(niter=3, **kwargs):
+def report(niter=1, **kwargs):
 
-    kwargs = {'s': 0, 'n': 300, 'p': 20, 'snr': 7, 'split_frac': 0.5, 'nsplits':3, 'intervals':'old'}
+    kwargs = {'s': 0, 'n': 300, 'p': 50, 'rho': 0., 'snr': 7,
+              'split_frac': 0.5, 'nsplits':3, 'intervals':'old', 'lam_frac':1.,
+              'loss': "logistic"}
     split_report = reports.reports['test_multiple_splits']
     screened_results = reports.collect_multiple_runs(split_report['test'],
                                                      split_report['columns'],
@@ -164,7 +172,11 @@ def report(niter=3, **kwargs):
                                                      reports.summarize_all,
                                                      **kwargs)
 
-    fig = reports.boot_clt_plot(screened_results, inactive=True, active=False)
+    screened_results.to_pickle("multiple_splits.pkl")
+    results = pd.read_pickle("multiple_splits.pkl")
+
+    fig = reports.boot_clt_plot(results)
+    fig.suptitle("Multiple splits of the data", fontsize=20)
     fig.savefig('multiple_splits.pdf') # will have both bootstrap and CLT on plot
 
 
