@@ -169,10 +169,9 @@ def report(niter=50, **kwargs):
     fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
-def compute_power(**kwargs):
+def compute_power(niters=50, **kwargs):
     BH_sample, simple_rejections_sample = [], []
-    niter = 50
-    for i in range(niter):
+    for i in range(niters):
         print("iteration", i)
         result = test_power(**kwargs)[1]
         if result is not None:
