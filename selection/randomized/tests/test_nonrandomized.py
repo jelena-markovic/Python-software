@@ -24,7 +24,7 @@ def test_nonrandomized(s=0,
                        p=50,
                        snr=7,
                        rho=0.,
-                       lam_frac=1.2,
+                       lam_frac=1.,
                        loss='gaussian',
                        parametric=True,
                        ndraw = 10000,
@@ -98,7 +98,7 @@ def test_nonrandomized(s=0,
         return pivots, sel_covered, sel_length, naive_pivots, naive_covered, naive_length
 
 
-def report(niter=50, **kwargs):
+def report(niter=1, **kwargs):
 
     condition_report = reports.reports['test_nonrandomized']
     runs = reports.collect_multiple_runs(condition_report['test'],
@@ -107,31 +107,10 @@ def report(niter=50, **kwargs):
                                          reports.summarize_all,
                                          **kwargs)
 
-    fig = reports.pivot_plot_simple(runs)
+    fig = reports.pivot_plot_plus_naive(runs)
+    fig.suptitle("Nonrandomized pivots", fontsize=20)
     fig.savefig('nonrandomized_pivots.pdf')
 
 
 if __name__ == '__main__':
     report()
-
-
-
-   # pvals = []
-   # for i in range(50):
-   #     print(i)
-   #     pval = test_nonrandomized()
-   #     print(pval)
-   #     if pval is not None:
-   #         pvals.append(pval)
-   #import matplotlib.pyplot as plt
-   # import statsmodels.api as sm
-   # fig = plt.figure()
-   # ax = fig.gca()
-   #ecdf = sm.distributions.ECDF(pvals)
-   # G = np.linspace(0, 1)
-   # F = ecdf(G)
-   # ax.plot(G, F, '-o', c='b', lw=2)
-   # ax.plot([0, 1], [0, 1], 'k-', lw=2)
-   # ax.set_xlim([0, 1])
-   # ax.set_ylim([0, 1])
-   # plt.show()
