@@ -71,6 +71,9 @@ class M_estimator(object):
 
         initial_scalings = []
 
+        self.active_directions_list = [] ## added for group lasso
+        self.active_penalty = []  ## added for group lasso
+
         for i, g in enumerate(groups):
             group = penalty.groups == g
             active_groups[i] = (np.linalg.norm(self.initial_soln[group]) > 1.e-6 * penalty.weights[g]) and (penalty.weights[g] > 0)
@@ -81,6 +84,8 @@ class M_estimator(object):
                 z[group] = self.initial_soln[group] / np.linalg.norm(self.initial_soln[group])
                 active_directions.append(z)
                 initial_scalings.append(np.linalg.norm(self.initial_soln[group]))
+                self.active_directions_list.append(z[group])
+                self.active_penalty.append(penalty.weights[g])
             if unpenalized_groups[i]:
                 unpenalized[group] = True
 
@@ -254,6 +259,9 @@ class M_estimator(object):
         self.subgrad_slice = subgrad_slice
 
         self._setup = True
+        self.Q = (_hessian[:, active])[active, :]
+        self.Qinv = np.linalg.inv(self.Q)
+        self.form_VQLambda()
 
 
     def projection(self, opt_state):
@@ -290,8 +298,9 @@ class M_estimator(object):
         # chain rule for optimization part
 
         opt_grad = opt_linear.T.dot(data_derivative)
+        opt_grad += self.derivative_logdet(opt_state[self.scaling_slice])
 
-        return opt_grad #- self.grad_log_jacobian(opt_state)
+        return opt_grad
 
     def setup_sampler(self, score_mean,
                       parametric = False,
@@ -319,9 +328,58 @@ class M_estimator(object):
         self.total_cov = np.dot(self.score_mat, self.score_cov).dot(self.score_mat.T)
         self.total_cov_inv = np.linalg.inv(self.total_cov)
         self.reference = self.score_mat.dot(score_mean)
-        #print(self.reference)
+
         nactive = self._overall.sum()
         self.target_cov = self.score_cov[:nactive,:nactive]
+        self.shape = (nactive,1)
+
+    def form_VQLambda(self):
+        nactive_groups = len(self.active_directions_list)
+        nactive_vars = np.sum([self.active_directions_list[i].shape[0] for i in range(nactive_groups)])
+        V = np.zeros((nactive_vars, nactive_vars - nactive_groups))
+        # U = np.zeros((nvariables, ngroups))
+        Lambda = np.zeros((nactive_vars, nactive_vars))
+        temp_row, temp_col = 0, 0
+        for g in range(len(self.active_directions_list)):
+            size_curr_group = self.active_directions_list[g].shape[0]
+            # U[temp_row:(temp_row+size_curr_group),g] = self._active_directions[g]
+            Lambda[temp_row:(temp_row + size_curr_group), temp_row:(temp_row + size_curr_group)] \
+                = self.active_penalty[g] * np.identity(size_curr_group)
+            import scipy
+            from scipy import linalg, matrix
+            def null(A, eps=1e-12):
+                u, s, vh = scipy.linalg.svd(A)
+                padding = max(0, np.shape(A)[1] - np.shape(s)[0])
+                null_mask = np.concatenate(((s <= eps), np.ones((padding,), dtype=bool)), axis=0)
+                null_space = scipy.compress(null_mask, vh, axis=0)
+                return scipy.transpose(null_space)
+
+            V_g = null(matrix(self.active_directions_list[g]))
+            V[temp_row:(temp_row + V_g.shape[0]), temp_col:(temp_col + V_g.shape[1])] = V_g
+            temp_row += V_g.shape[0]
+            temp_col += V_g.shape[1]
+        self.VQLambda = np.dot(np.dot(V.T, self.Qinv), Lambda.dot(V))
+
+
+    def derivative_logdet(self, scalings):
+        nactive_groups = len(self.active_directions_list)
+        nactive_vars = np.sum([self.active_directions_list[i].shape[0] for i in range(nactive_groups)])
+        from scipy.linalg import block_diag
+        matrix_list = [scalings[i] * np.identity(self.active_directions_list[i].shape[0] - 1) for i in
+                       range(scalings.shape[0])]
+        Gamma_minus = block_diag(*matrix_list)
+        jacobian_inv = np.linalg.inv(Gamma_minus + self.VQLambda)
+
+        group_sizes = [self._active_directions[i].shape[0] for i in range(nactive_groups)]
+        group_sizes_cumsum = np.concatenate(([0], np.array(group_sizes).cumsum()))
+
+        jacobian_inv_blocks = [jacobian_inv[group_sizes_cumsum[i]:group_sizes_cumsum[i + 1],
+                               group_sizes_cumsum[i]:group_sizes_cumsum[i + 1]]
+                               for i in range(nactive_groups)]
+
+        der = np.zeros(self.observed_opt_state.shape[0])
+        der[self.scaling_slice] = np.array([np.matrix.trace(jacobian_inv_blocks[i]) for i in range(scalings.shape[0])])
+        return der
 
 
     def reconstruction_map(self, opt_state):
@@ -522,6 +580,70 @@ class M_estimator(object):
                                            self.target_cov)
 
         return intervals_instance.confidence_intervals_all(level=level)
+
+    def coefficient_pvalues(self,
+                            observed,
+                            parameter=None,
+                            ndraw=10000,
+                            burnin=2000,
+                            stepsize=None,
+                            sample=None,
+                            alternative='twosided'):
+        '''
+        Construct selective p-values
+        for each parameter of the target.
+        Parameters
+        ----------
+        observed : np.float
+            A vector of parameters with shape `self.shape`,
+            representing coordinates of the target.
+        parameter : np.float (optional)
+            A vector of parameters with shape `self.shape`
+            at which to evaluate p-values. Defaults
+            to `np.zeros(self.shape)`.
+        ndraw : int
+            How long a chain to return?
+        burnin : int
+            How many samples to discard?
+        stepsize : float
+            Stepsize for Langevin sampler. Defaults
+            to a crude estimate based on the
+            dimension of the problem.
+        sample : np.array (optional)
+            If not None, assumed to be a sample of shape (-1,) + `self.shape`
+            representing a sample of the target from parameters `self.reference`.
+            Allows reuse of the same sample for construction of confidence
+            intervals, hypothesis tests, etc.
+        alternative : ['greater', 'less', 'twosided']
+            What alternative to use.
+        Returns
+        -------
+        pvalues : np.float
+        '''
+
+        if alternative not in ['greater', 'less', 'twosided']:
+            raise ValueError("alternative should be one of ['greater', 'less', 'twosided']")
+
+        if sample is None:
+            sample = self.sample(ndraw, burnin, stepsize=stepsize)
+
+        if parameter is None:
+            parameter = np.zeros(observed)
+
+        nactive = observed.shape[0]
+        intervals_instance = intervals_from_sample(self.reference[:self._overall.sum()],
+                                           sample,
+                                           observed,
+                                           self.target_cov)
+
+        pval = intervals_instance.pivots_all(parameter)
+
+        if alternative == 'greater':
+            return 1 - pval
+        elif alternative == 'less':
+            return pval
+        else:
+            return 2 * np.minimum(pval, 1 - pval)
 
 
 def restricted_Mest(Mest_loss, active, solve_args={'min_its':50, 'tol':1.e-10}):

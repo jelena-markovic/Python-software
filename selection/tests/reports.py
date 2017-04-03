@@ -186,7 +186,8 @@ def pivot_plot_simple(multiple_results, coverage=True, color='b', label=None, fi
         ecdf = sm.distributions.ECDF(multiple_results['pivot'])
     elif 'truth' in multiple_results.columns:
         ecdf = sm.distributions.ECDF(multiple_results['truth'])
-
+    elif 'pivots_clt' in multiple_results.columns:
+        ecdf = sm.distributions.ECDF(multiple_results['pivots_clt'])
     G = np.linspace(0, 1)
     F_pivot = ecdf(G)
     #print(color)
