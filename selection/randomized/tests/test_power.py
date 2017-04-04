@@ -47,7 +47,8 @@ def test_power(s=30,
     print(n,p,s)
     if loss=="gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1.,
-                                                       equi_correlated=equi_correlated)
+                                                       equi_correlated=equi_correlated,
+                                                       random_signs=True, random_locations=True)
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma
         glm_loss = rr.glm.gaussian(X, y)
     elif loss=="logistic":
@@ -76,7 +77,6 @@ def test_power(s=30,
             #lam = np.true_divide(lam+cv.one_SD_rule(direction="up"),2)
             lam = cv.one_SD_rule(direction="up")
             print("one SD rule lambda", lam)
-
 
     W = lam_frac * np.ones(p) * lam
     penalty = rr.group_lasso(np.arange(p), weights=dict(zip(np.arange(p), W)), lagrange=1.)
@@ -198,7 +198,7 @@ def compute_power(**kwargs):
 
 if __name__ == '__main__':
     np.random.seed(500)
-    kwargs = {'s':30, 'n':2000, 'p':1000, 'rho':0.6,
+    kwargs = {'s':30, 'n':3000, 'p':1000, 'rho':0.6,
               'equi_correlated':False,
               'snr':3.5,
               'lam_frac':1.,

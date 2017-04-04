@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+import random
 from scipy.stats import t as tdist
 
 
@@ -17,13 +17,12 @@ def design(n, p, rho, equi_correlated):
         sigmaX, cholX = AR1(rho=rho, p=p)
         X = np.random.standard_normal((n, p)).dot(cholX.T)
         # X = np.random.multivariate_normal(mean=np.zeros(p), cov = sigmaX, size = (n,))
-        # print(X.shape)
     return X
 
 
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
-                      random_signs=False, df=np.inf,
-                      scale=True, center=True,
+                      random_signs=False, random_locations = False,
+                      df=np.inf, scale=True, center=True,
                       equi_correlated=True):
 
 
@@ -82,8 +81,9 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
     beta[:s] = snr
     if random_signs:
         beta[:s] *= (2 * np.random.binomial(1, 0.5, size=(s,)) - 1.)
-    active = np.zeros(p, np.bool)
-    active[:s] = True
+
+    if random_locations:
+        random.shuffle(beta)
 
     # noise model
     def _noise(n, df=np.inf):
@@ -94,11 +94,15 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, snr=7,
         return tdist.rvs(df, size=n) / sd_t
 
     Y = (X.dot(beta) + _noise(n, df)) * sigma
-    return X, Y, beta * sigma, np.nonzero(active)[0], sigma
+    return X, Y, beta * sigma, np.where(beta)[0], sigma
 
+
+if __name__=='__main__':
+    result=gaussian_instance(n=10, p=10, s=4, random_locations=True, random_signs=True)
+    print(result[3])
 
 def logistic_instance(n=100, p=200, s=7, rho=0.3, snr=14,
-                      random_signs=False, 
+                      random_signs=False, random_locations=False,
                       scale=True, center=True, equi_correlated=True):
     """
     A testing instance for the LASSO.
@@ -156,14 +160,14 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, snr=14,
     if random_signs:
         beta[:s] *= (2 * np.random.binomial(1, 0.5, size=(s,)) - 1.)
 
-    active = np.zeros(p, np.bool)
-    active[:s] = True
+    if random_locations:
+        random.shuffle(beta)
 
     eta = linpred = np.dot(X, beta) 
     pi = np.exp(eta) / (1 + np.exp(eta))
 
     Y = np.random.binomial(1, pi)
-    return X, Y, beta, np.nonzero(active)[0]
+    return X, Y, beta,  np.where(beta)[0]
 
 def HIV_NRTI(drug='3TC', 
              standardize=True, 
