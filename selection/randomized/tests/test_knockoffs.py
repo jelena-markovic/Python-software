@@ -22,7 +22,8 @@ def test_knockoffs(s=30,
                    snr=3.5):
 
     X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, snr=snr, sigma=1.,
-                                                       equi_correlated=equi_correlated)
+                                                       equi_correlated=equi_correlated,
+                                                   random_signs=True, random_locations=True)
 
     robjects.r('''knockoffs = function(X,y){
         q=0.2
