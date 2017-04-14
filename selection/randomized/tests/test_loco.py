@@ -14,7 +14,7 @@ from selection.tests.instance import (gaussian_instance, logistic_instance)
 
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
-@register_report(['mle', 'truth', 'pvalue', 'cover', 'ci_length_clt',
+@register_report(['truth', 'pvalue', 'cover', 'ci_length_clt',
                   'naive_pvalues', 'naive_cover','ci_length_naive', 'active',
                   'covered_split', 'ci_length_split'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
@@ -25,7 +25,7 @@ def test_loco(s=0,
               snr=7,
               rho=0.,
               split_frac = 0.8,
-              lam_frac = 0.8,
+              lam_frac = 1.2,
               loss_label = 'gaussian',
               ndraw = 10000,
               burnin = 2000,
@@ -49,7 +49,7 @@ def test_loco(s=0,
     m = int(split_frac * n)
     epsilon = 1. / np.sqrt(n)
 
-    W = np.ones(p)*lam
+    W = np.ones(p)*lam_frac*lam
     W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
@@ -76,7 +76,7 @@ def test_loco(s=0,
         _loco = LOCO(loss, loss_1, loss_2,
                      loss_rr=loss_rr,
                      active=active,
-                     epsilon=1.,
+                     epsilon=1., # the randomization added \espilon*unif
                      lam=lam)
 
         target_sampler, target_observed = loco_target(loss,
@@ -93,9 +93,6 @@ def test_loco(s=0,
 
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
 
-        pivots_mle = target_sampler.coefficient_pvalues(target_observed,
-                                                        parameter=target_sampler.reference,
-                                                        sample=target_sample)
 
         true_vec = np.zeros_like(target_observed) # needs to be changed
         pivots_truth = target_sampler.coefficient_pvalues(target_observed,
@@ -130,9 +127,9 @@ def test_loco(s=0,
 
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
-        return pivots_mle, pivots_truth, pvalues, covered, ci_length_sel,\
+        return pivots_truth, pvalues, covered, ci_length_sel,\
                naive_pvals, naive_covered, ci_length_naive, active_var,\
-                split_covered, ci_length_split
+               split_covered, ci_length_split
 
 
 
@@ -145,8 +142,8 @@ def report(niter=50, **kwargs):
                                              reports.summarize_all,
                                              **kwargs)
     fig = reports.pivot_plot_plus_naive(runs)
-    fig.suptitle('Randomized Lasso marginalized subgradient')
-    fig.savefig('marginalized_subgrad_pivots.pdf')
+    fig.suptitle('Loco')
+    fig.savefig('Loco.pdf')
 
 
 if __name__== '__main__':

@@ -28,54 +28,30 @@ class LOCO(object):
         self.active_set =  np.nonzero(active)[0]
 
 
-        def active_train(loss, lam=lam):
-            X, _ = loss.data
-            ncol = X.shape[1]
-            penalty = rr.l1norm(ncol, lagrange=lam)
-            problem = rr.simple_problem(loss, penalty)
-            beta_train = problem.solve(**solve_args)
-            active = beta_train !=0
-            beta_bar = restricted_Mest(loss, active, solve_args=self.solve_args)
-            return active, beta_bar
-
-            #active_ = _beta(glm_loss(X1,y1))
-        locos_active = []
-        locos_estimators = []
+        self.active_locos = [] #E\j, j\in E
         for j in range(self.nactive):
-            keep = np.ones(self.p, np.bool)
-            keep[self.active_set[j]] = 0
-            #active, beta_bar = active_train(self.loss_rr(self.X1[:, keep], self.y1))
             active = self.active.copy()
-            active = active[keep]
-            beta_bar = restricted_Mest(self.loss_rr(self.X1[:, keep], self.y1), active, solve_args=self.solve_args)
-            locos_active.append(active)
-            locos_estimators.append(beta_bar)
-
-
-        self.active_locos = locos_active
-        self.locos_estimators = locos_estimators
-
-        self.estimator = restricted_Mest(loss_1, self.active, solve_args=self.solve_args)
+            active[self.active_set[j]] = 0
+            self.active_locos.append(active)
 
     def _boot_loco(self, X, y, indices):
         X_star = X[indices,:]
         y_star = y[indices]
 
         beta_bar = restricted_Mest(self.loss_rr(X_star, y_star), self.active, solve_args=self.solve_args)
-
         loco = np.zeros(self.nactive)
+
         for j in range(self.nactive):
             keep = np.ones(self.p, np.bool)
             keep[self.active_set[j]] = 0
 
-            beta_bar_loco = restricted_Mest(self.loss_rr(X_star[:,keep], y_star),
+            beta_bar_loco = restricted_Mest(self.loss_rr(X_star, y_star),
                                             self.active_locos[j], solve_args=self.solve_args)
 
             def test_error(design, response):
                 randomization = np.random.uniform(low=-1, high=1, size=X.shape[0]) * self.epsilon
-                design_keep = design[:,keep]
-                return np.sum(np.abs(response - np.dot(design_keep[:, self.active_locos[j]], beta_bar_loco)) \
-                       - np.abs(response - np.dot(design[:, self.active], beta_bar)) + randomization)/self.n
+                return np.sum(np.square(response - np.dot(design[:, self.active_locos[j]], beta_bar_loco)) \
+                       - np.square(response - np.dot(design[:, self.active], beta_bar)) + randomization)/design.shape[0]
 
             loco[j] = test_error(X_star, y_star)
         return loco
@@ -87,33 +63,11 @@ class LOCO(object):
         return functools.partial(self._boot_loco, self.X, self.y), observed
 
 
-    def _split_boot_loco(self, X2, y2, indices2):
-        X2_star = X2[indices2, :]
-        y2_star = y2[indices2]
-        n2 = X2.shape[0]
-
-        loco = np.zeros(self.nactive)
-        for j in range(self.nactive):
-            keep = np.ones(self.p, np.bool)
-            keep[self.active_set[j]] = 0
-
-            def test_error(design, response):
-                randomization = np.random.uniform(low=-1, high=1, size=n2) * self.epsilon
-                design_keep = design[:, keep]
-                return np.sum(np.abs(response - np.dot(design_keep[:, self.active_locos[j]], self.locos_estimators[j])) \
-                              - np.abs(response - np.dot(design[:, self.active], self.estimator)) + randomization)
-
-            loco[j] = test_error(X2_star, y2_star)/float(n2)
-            # loco[j] = np.true_divide(sum([test_error(np.array(X2_star[i,:]), y2_star[i]) for i in range(n2)]), n2)
-            # loco[j] = sum([test_error(np.array(X_star[i,:]), y_star[i]) for i in range(n)])/n
-        return loco
-
-
     def split_intervals(self, alpha=0.1):
-        observed = self._split_boot_loco(self.X2, self.y2, np.arange(self.X2.shape[0]))
+        observed = self._boot_loco(self.X2, self.y2, np.arange(self.X2.shape[0]))
         n2 = self.X2.shape[0]
         sampler = lambda: np.random.choice(n2, size=(n2,), replace=True)
-        boot_target = functools.partial(self._split_boot_loco, self.X2, self.y2)
+        boot_target = functools.partial(self._boot_loco, self.X2, self.y2)
         cov = bootstrap_cov(sampler=sampler, boot_target=boot_target, nsample = 500)
 
         LU = np.zeros((2, observed.shape[0]))
