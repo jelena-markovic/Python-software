@@ -63,7 +63,7 @@ class LOCO(object):
         return functools.partial(self._boot_loco, self.X, self.y), observed
 
 
-    def split_intervals(self, alpha=0.1):
+    def split_intervals(self, parameter=None, alpha=0.1):
         observed = self._boot_loco(self.X2, self.y2, np.arange(self.X2.shape[0]))
         n2 = self.X2.shape[0]
         sampler = lambda: np.random.choice(n2, size=(n2,), replace=True)
@@ -71,12 +71,17 @@ class LOCO(object):
         cov = bootstrap_cov(sampler=sampler, boot_target=boot_target, nsample = 500)
 
         LU = np.zeros((2, observed.shape[0]))
+        pvalues = np.zeros(observed.shape[0])
+        if parameter is None:
+            parameter = np.zeros(observed.shape[0])
         quantile = - ndist.ppf(alpha / float(2))
         for j in range(observed.shape[0]):
             sigma = np.sqrt(cov[j, j])
             LU[0, j] = observed[j] - sigma * quantile
             LU[1, j] = observed[j] + sigma * quantile
-        return LU.T
+            pval = ndist.cdf((observed[j] - parameter[j]) / sigma)
+            pvalues[j] = 2 * min(pval, 1 - pval)
+        return LU.T, pvalues
 
 
 def loco_target(loss,

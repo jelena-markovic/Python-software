@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np
-
+import pandas as pd
 import regreg.api as rr
 
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
@@ -15,8 +15,9 @@ from selection.tests.instance import (gaussian_instance, logistic_instance)
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 @register_report(['truth', 'pvalue', 'cover', 'ci_length_clt',
-                  'naive_pvalues', 'naive_cover','ci_length_naive', 'active',
-                  'covered_split', 'ci_length_split'])
+                  'naive_pvalues', 'naive_cover','ci_length_naive',
+                  'split_pvalues', 'covered_split', 'ci_length_split',
+                  'active'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_loco(s=0,
@@ -29,8 +30,8 @@ def test_loco(s=0,
               loss_label = 'gaussian',
               ndraw = 10000,
               burnin = 2000,
-              bootstrap=False,
-              solve_args={'min_its':50, 'tol':1.e-10},
+              bootstrap = False,
+              solve_args = {'min_its':50, 'tol':1.e-10},
               reference_known=False):
 
     if loss_label == "gaussian":
@@ -103,7 +104,7 @@ def test_loco(s=0,
                                                      parameter=np.zeros_like(true_vec),
                                                      sample=target_sample)
 
-        LU_split = _loco.split_intervals()
+        LU_split, split_pvalues = _loco.split_intervals()
         active_var = np.zeros(nactive, np.bool)
 
 
@@ -128,12 +129,12 @@ def test_loco(s=0,
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
         return pivots_truth, pvalues, covered, ci_length_sel,\
-               naive_pvals, naive_covered, ci_length_naive, active_var,\
-               split_covered, ci_length_split
+               naive_pvals, naive_covered, ci_length_naive, \
+               split_pvalues, split_covered, ci_length_split, \
+               active_var
 
 
-
-def report(niter=50, **kwargs):
+def report(niter=1, **kwargs):
 
     split_report = reports.reports['test_loco']
     runs = reports.collect_multiple_runs(split_report['test'],
@@ -141,10 +142,19 @@ def report(niter=50, **kwargs):
                                              niter,
                                              reports.summarize_all,
                                              **kwargs)
-    fig = reports.pivot_plot_plus_naive(runs)
-    fig.suptitle('Loco')
+    runs.to_pickle("loco.pkl")
+    read_runs = pd.read_pickle("loco.pkl")
+
+    fig = reports.split_pvalue_plot(read_runs)
+    fig.suptitle('Loco alternative', fontsize=20)
     fig.savefig('Loco.pdf')
 
 
 if __name__== '__main__':
-    report()
+
+    kwargs = {'s': 0, 'n': 200, 'p': 50, 'snr': 7, 'rho': 0.,
+              'split_frac': 0.8, 'lam_frac': 1.2,
+              'loss_label': 'gaussian',
+              'reference_known': False}
+
+    report(niter=50, **kwargs)

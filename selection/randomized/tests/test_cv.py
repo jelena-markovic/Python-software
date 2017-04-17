@@ -62,7 +62,7 @@ def test_cv(n=100, p=50, s=0, snr=3.5, K=5, rho=0.,
 
     if condition_on_CVR:
         cv.condition_on_opt_state()
-        lam = cv.one_SD_rule()
+        lam = cv.one_SD_rule(direction="up")
         print("new lam", lam)
 
     # non-randomied Lasso, just looking how many vars it selects
@@ -164,7 +164,7 @@ def test_cv(n=100, p=50, s=0, snr=3.5, K=5, rho=0.,
 
 def report(niter=50, **kwargs):
     np.random.seed(500)
-    kwargs = {'s': 0, 'n': 600, 'p': 100, 'snr': 3.5, 'bootstrap': False}
+    kwargs = {'s': 0, 'n': 3000, 'p': 1000, 'snr': 3.5, 'bootstrap': False}
     intervals_report = reports.reports['test_cv']
     CV_runs = reports.collect_multiple_runs(intervals_report['test'],
                                              intervals_report['columns'],

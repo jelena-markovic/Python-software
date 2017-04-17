@@ -127,48 +127,37 @@ def split_pvalue_plot(multiple_results, screening=False, fig=None):
     Compare pvalues where we have a split_pvalue
     """
 
-    have_split = ~pd.isnull(multiple_results['split_pvalue'])
-    multiple_results = multiple_results.loc[have_split]
+    #have_split = ~pd.isnull(multiple_results['split_pvalues'])
+    #multiple_results = multiple_results.loc[have_split]
+    G = np.linspace(0, 1)
 
-    P0_s = multiple_results['split_pvalue'][~multiple_results['active']]
-    PA_s = multiple_results['split_pvalue'][multiple_results['active']]
+    ecdf_split = sm.distributions.ECDF(multiple_results['split_pvalues'][~multiple_results['active']])
+    F_split = ecdf_split(G)
 
-    # presumes we also have a pvalue
-    P0 = multiple_results['pvalue'][~multiple_results['active']]
-    PA = multiple_results['pvalue'][multiple_results['active']]
+    ecdf_naive = sm.distributions.ECDF(multiple_results['naive_pvalues'][~multiple_results['active']])
+    F_naive = ecdf_naive(G)
+
+    ecdf_carved = sm.distributions.ECDF(multiple_results['pvalue'][~multiple_results['active']])
+    F_carved = ecdf_carved(G)
 
     if fig is None:
         fig = plt.figure()
     ax = fig.gca()
 
-    fig.suptitle('Null and alternative p-values')
+    fig.suptitle('P-values')
 
-    grid = np.linspace(0, 1, 51)
-
-    if len(P0) > 0:
-        ecdf0 = sm.distributions.ECDF(P0)
-        F0 = ecdf0(grid)
-        ax.plot(grid, F0, '--o', c='r', lw=2, label=r'$H_0$')
-    if len(PA) > 0:
-        ecdfA = sm.distributions.ECDF(PA)
-        FA = ecdfA(grid)
-        ax.plot(grid, FA, '--o', c='g', lw=2, label=r'$H_A$')
-
-    if len(P0_s) > 0:
-        ecdf0 = sm.distributions.ECDF(P0_s)
-        F0 = ecdf0(grid)
-        ax.plot(grid, F0, '-+', c='r', lw=2, label=r'$H_0$ split')
-    if len(PA) > 0:
-        ecdfA = sm.distributions.ECDF(PA_s)
-        FA = ecdfA(grid)
-        ax.plot(grid, FA, '-+', c='g', lw=2, label=r'$H_A$ split')
-
+    ax.plot(G, F_split, '-o', c='r', lw=2, label="Split pvalues")
     ax.plot([0, 1], [0, 1], 'k-', lw=2)
-    ax.legend(loc='lower right')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.plot(G, F_naive, '-o', c='g', lw=2, label="Naive pvalues")
+    ax.plot(G, F_carved, '-o', c='b', lw=2, label="Carved pvalues")
+    ax.set_xlabel("Observed value", fontsize=18)
+    ax.set_ylabel("Empirical CDF", fontsize=18)
+    ax.legend(loc='lower right', fontsize=18)
 
-    if screening:
-        screen = 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])
-        ax.set_title('Screening: %0.2f' % screen)
+    return fig
+
 
 def pivot_plot_simple(multiple_results, coverage=True, color='b', label=None, fig=None):
     """
@@ -373,7 +362,6 @@ def boot_clt_pivots(multiple_results):
     if 'pivot' in multiple_results.columns:
         pivots = multiple_results['pivot']
         pivot_summary['pivots'] = {'pivots (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
-
     return pivot_summary
 
 def compute_coverage(multiple_results):
