@@ -129,8 +129,8 @@ def test_loco(s=0,
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
         return pivots_truth, pvalues, covered, ci_length_sel,\
-               naive_pvals, naive_covered, ci_length_naive, \
-               split_pvalues, split_covered, ci_length_split, \
+               naive_pvals, naive_covered, ci_length_naive,  \
+               split_pvalues, split_covered, ci_length_split,\
                active_var
 
 
@@ -152,9 +152,8 @@ def report(niter=1, **kwargs):
 
 if __name__== '__main__':
 
-    kwargs = {'s': 0, 'n': 200, 'p': 50, 'snr': 7, 'rho': 0.,
-              'split_frac': 0.8, 'lam_frac': 1.2,
-              'loss_label': 'gaussian',
-              'reference_known': False}
+    kwargs = {'s': 0, 'n': 300, 'p': 70, 'snr': 7, 'rho': 0.,
+              'split_frac': 0.8, 'lam_frac': 2.5,
+              'loss_label': 'gaussian', 'reference_known': False}
 
     report(niter=50, **kwargs)
