@@ -56,6 +56,14 @@ class M_estimator_approx(M_estimator):
         self.offset_active = self._opt_affine_term[:self.nactive] + self.null_statistic[:self.nactive]
         self.offset_inactive = self.null_statistic[self.nactive:]
 
+    def bootstrap_sample(self, j):
+        X, y = self.loss.data
+        XE = X[:,self._overall]
+        n = X.shape[0]
+        sampler = lambda: np.random.choice(n, size=(n,), replace=True)
+        indices = sampler()
+        return np.linalg.lstsq(XE[indices, :], y[indices])[0][j]
+
 
 class threshold_score_approx(threshold_score):
 

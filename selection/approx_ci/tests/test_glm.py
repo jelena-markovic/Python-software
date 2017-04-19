@@ -1,5 +1,6 @@
 from __future__ import print_function
 import numpy as np
+import pandas as pd
 import regreg.api as rr
 import selection.tests.reports as reports
 from selection.tests.instance import logistic_instance, gaussian_instance
@@ -12,12 +13,12 @@ from selection.randomized.query import naive_confidence_intervals
 from selection.randomized.query import naive_pvalues
 
 
-@register_report(['cover', 'ci_length', 'truth', 'naive_cover', 'naive_pvalues'])
+@register_report(['truth', 'naive_pvalues', 'active_var'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_glm(n=500,
-             p=100,
-             s=5,
+             p=20,
+             s=0,
              snr=3,
              rho=0.,
              lam_frac = 1.,
@@ -52,59 +53,46 @@ def test_glm(n=500,
     active = M_est._overall
     active_set = np.asarray([i for i in range(p) if active[i]])
     nactive = np.sum(active)
-
+    if nactive==0:
+        return None
     print("active set, true_support", active_set, true_support)
     true_vec = beta[active]
+
+    active_var = np.zeros(nactive, np.bool)
+    for i in range(nactive):
+        active_var[i] = active_set[i] in true_support
     #print("true coefficients", true_vec)
 
-    if (set(active_set).intersection(set(true_support)) == set(true_support))== True:
+    if (set(active_set).intersection(set(true_support)) == set(true_support)) == True:
         ci = approximate_conditional_density(M_est)
-        ci.solve_approx()
-
-        ci_active = np.zeros((nactive, 2))
-        covered = np.zeros(nactive, np.bool)
-        ci_length = np.zeros(nactive)
-        pivots = np.zeros(nactive)
+        pvalues = ci.solve_approx()
 
         class target_class(object):
             def __init__(self, target_cov):
                 self.target_cov = target_cov
                 self.shape = target_cov.shape
+
         target = target_class(M_est.target_cov)
-
-        ci_naive = naive_confidence_intervals(target, M_est.target_observed)
         naive_pvals = naive_pvalues(target, M_est.target_observed, true_vec)
-        naive_covered = np.zeros(nactive)
 
-        for j in range(nactive):
-            ci_active[j, :] = np.array(ci.approximate_ci(j))
-            if (ci_active[j, 0] <= true_vec[j]) and (ci_active[j,1] >= true_vec[j]):
-                covered[j] = 1
-            ci_length[j] = ci_active[j,1] - ci_active[j,0]
-            print(ci_active[j, :])
-            pivots[j] = ci.approximate_pvalue(j, true_vec[j])
-
-            # naive ci
-            if (ci_naive[j,0]<=true_vec[j]) and (ci_naive[j,1]>=true_vec[j]):
-                naive_covered[j]+=1
-
-        return covered, ci_length, pivots, naive_covered, naive_pvals
+        return pvalues, naive_pvals, active_var
     #else:
     #    return 0
 
-def report(niter=50, **kwargs):
+def report(niter=20, **kwargs):
 
-    kwargs = {'s': 0, 'n': 500, 'p': 10, 'snr': 5, 'loss': 'gaussian', 'randomizer':'gaussian'}
+    kwargs = {'s': 0, 'n': 500, 'p': 100, 'snr': 5, 'loss': 'gaussian', 'randomizer':'gaussian'}
     split_report = reports.reports['test_glm']
-    screened_results = reports.collect_multiple_runs(split_report['test'],
+    results = reports.collect_multiple_runs(split_report['test'],
                                                      split_report['columns'],
                                                      niter,
                                                      reports.summarize_all,
                                                      **kwargs)
-
-    fig = reports.pivot_plot_plus_naive(screened_results)
-    fig.savefig('approx_pivots_glm.pdf')
+    results.to_pickle("alt_bootstrap.pkl")
+    read_results = pd.read_pickle("alt_bootstrap.pkl")
+    fig = reports.pivot_plot_simple(read_results)
+    fig.savefig('alt_bootstrap.pdf')
 
 
 if __name__=='__main__':
-    report()
+     report()
