@@ -10,11 +10,12 @@ from selection.approx_ci.estimator_approx import M_estimator_approx
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
 from selection.randomized.query import naive_confidence_intervals
-from selection.randomized.query import naive_pvalues
+from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 
 @register_report(['truth', 'cover', 'ci_length_clt',
-                  'naive_pvalues', 'active_var'])
+                  'naive_pvalues', 'covered_naive', 'ci_length_naive',
+                  'active_var'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_glm(n=500,
@@ -96,10 +97,12 @@ def test_glm(n=500,
             return None
         sel_covered, sel_length = coverage(selective_ci)
 
-        naive_ci = ci.approximate_confidence_intervals()
+        naive_ci = naive_confidence_intervals(target, M_est.target_observed)
+        naive_covered, naive_length = coverage(naive_ci)
 
         return pvalues, sel_covered, sel_length, \
-               naive_pvals, active_var
+               naive_pvals, naive_covered, naive_length, \
+               active_var
     #else:
     #    return 0
 
@@ -120,4 +123,6 @@ def report(niter=50, **kwargs):
 
 
 if __name__=='__main__':
-     report()
+
+    report()
+
