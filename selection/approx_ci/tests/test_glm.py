@@ -13,7 +13,8 @@ from selection.randomized.query import naive_confidence_intervals
 from selection.randomized.query import naive_pvalues
 
 
-@register_report(['truth', 'naive_pvalues', 'active_var'])
+@register_report(['truth', 'cover', 'ci_length_clt',
+                  'naive_pvalues', 'active_var'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_glm(n=500,
@@ -65,7 +66,11 @@ def test_glm(n=500,
 
     if (set(active_set).intersection(set(true_support)) == set(true_support)) == True:
         ci = approximate_conditional_density(M_est)
-        pvalues = ci.solve_approx()
+        ci.solve_approx()
+        pvalues = ci.approximate_pvalues()
+        if pvalues is None:
+            return None
+
 
         class target_class(object):
             def __init__(self, target_cov):
@@ -75,11 +80,30 @@ def test_glm(n=500,
         target = target_class(M_est.target_cov)
         naive_pvals = naive_pvalues(target, M_est.target_observed, true_vec)
 
-        return pvalues, naive_pvals, active_var
+        def coverage(LU):
+            L, U = LU[:, 0], LU[:, 1]
+            covered = np.zeros(nactive)
+            ci_length = np.zeros(nactive)
+
+            for j in range(nactive):
+                if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
+                        covered[j] = 1
+                ci_length[j] = U[j] - L[j]
+            return covered, ci_length
+
+        selective_ci = ci.approximate_confidence_intervals()
+        if selective_ci is None:
+            return None
+        sel_covered, sel_length = coverage(selective_ci)
+
+        naive_ci = ci.approximate_confidence_intervals()
+
+        return pvalues, sel_covered, sel_length, \
+               naive_pvals, active_var
     #else:
     #    return 0
 
-def report(niter=20, **kwargs):
+def report(niter=50, **kwargs):
 
     kwargs = {'s': 0, 'n': 500, 'p': 100, 'snr': 5, 'loss': 'gaussian', 'randomizer':'gaussian'}
     split_report = reports.reports['test_glm']
@@ -90,7 +114,8 @@ def report(niter=20, **kwargs):
                                                      **kwargs)
     results.to_pickle("alt_bootstrap.pkl")
     read_results = pd.read_pickle("alt_bootstrap.pkl")
-    fig = reports.pivot_plot_simple(read_results)
+    fig = reports.pivot_plot_plus_naive(read_results)
+    fig.suptitle("Alternative bootstrap", fontsize=20)
     fig.savefig('alt_bootstrap.pdf')
 
 
