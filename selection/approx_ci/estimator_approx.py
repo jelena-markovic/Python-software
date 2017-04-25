@@ -1,5 +1,5 @@
 import numpy as np
-from selection.randomized.M_estimator import M_estimator
+from selection.randomized.M_estimator import (M_estimator, restricted_Mest)
 from selection.randomized.glm import pairs_bootstrap_glm, bootstrap_cov
 from selection.randomized.threshold_score import threshold_score
 from selection.randomized.greedy_step import greedy_score_step
@@ -56,7 +56,18 @@ class M_estimator_approx(M_estimator):
         self.offset_active = self._opt_affine_term[:self.nactive] + self.null_statistic[:self.nactive]
         self.offset_inactive = self.null_statistic[self.nactive:]
 
-    def bootstrap_sample(self, j):
+
+    def bootstrap_sample(self, solve_args={'min_its':20, 'tol':1.e-10}):
+        X, y = self.loss.data
+        n = X.shape[0]
+        sampler = lambda: np.random.choice(n, size=(n,), replace=True)
+        indices = sampler()
+        _boot_loss = self.loss.subsample(indices)
+        _beta_unpenalized = restricted_Mest(_boot_loss, self._overall)
+        return _beta_unpenalized
+
+
+    def bootstrap_sample_new(self, j):
         X, y = self.loss.data
         XE = X[:,self._overall]
         n = X.shape[0]

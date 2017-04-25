@@ -9,7 +9,6 @@ from selection.approx_ci.estimator_approx import M_estimator_approx
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
-from selection.randomized.query import naive_confidence_intervals
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 
@@ -72,7 +71,6 @@ def test_glm(n=500,
         if pvalues is None:
             return None
 
-
         class target_class(object):
             def __init__(self, target_cov):
                 self.target_cov = target_cov
@@ -103,12 +101,10 @@ def test_glm(n=500,
         return pvalues, sel_covered, sel_length, \
                naive_pvals, naive_covered, naive_length, \
                active_var
-    #else:
-    #    return 0
+
 
 def report(niter=50, **kwargs):
 
-    kwargs = {'s': 0, 'n': 500, 'p': 100, 'snr': 5, 'loss': 'gaussian', 'randomizer':'gaussian'}
     split_report = reports.reports['test_glm']
     results = reports.collect_multiple_runs(split_report['test'],
                                                      split_report['columns'],
@@ -124,5 +120,7 @@ def report(niter=50, **kwargs):
 
 if __name__=='__main__':
 
-    report()
+    kwargs = {'s': 0, 'n': 500, 'p': 100, 'snr': 5, 'rho':0, 'lam_frac': 2.,
+              'loss': 'logistic', 'randomizer': 'gaussian'}
+    report(niter=50, **kwargs)
 

@@ -313,23 +313,27 @@ class approximate_conditional_density(rr.smooth_atom):
 
         LU = np.zeros((self.nactive,2))
 
+        bootstrap_samples = []
+        for i in range(B):
+            bootstrap_samples.append(self.sel_alg.bootstrap_sample())
+
         for j in range(self.nactive):
             grid_length = 600
             param_grid = np.linspace(-6 * np.amax(np.absolute(self.target_observed)),
                                       6 * np.amax(np.absolute(self.target_observed)), num=grid_length)
 
             self.sel_alg.setup_map(j)
-            bootstrap_sample = np.zeros(B)
+            bootstrap_samples_coordinate = np.array([bootstrap_samples[i][j] for i in range(B)])
 
-            for i in range(B):
-                bootstrap_sample[i] = self.sel_alg.bootstrap_sample(j)
+            #for i in range(B):
+            #    bootstrap_sample[i] = self.sel_alg.bootstrap_sample(j)
 
             pivots_over_grid = np.zeros(param_grid.shape[0])
             approx_sel_probabilities = np.zeros(B)
 
             for k in range(param_grid.shape[0]):
                 for i in range(B):
-                    value = bootstrap_sample[i] - self.target_observed[j]
+                    value = bootstrap_samples_coordinate[i] - self.target_observed[j]
                     grid_index = (np.abs(self.grid - value+param_grid[k])).argmin()
                     # approx = approximate_conditional_prob(grid_value, self.sel_alg)
                     # approx_sel_probabilities[i] = -(approx.minimize2(j, nstep=100)[::-1])[0]
@@ -338,7 +342,8 @@ class approximate_conditional_density(rr.smooth_atom):
                 valid = ~np.isnan(approx_sel_probabilities)
 
                 pivot = np.sum(np.multiply(np.exp(approx_sel_probabilities[valid]), \
-                          np.array(bootstrap_sample[valid] < 2 * self.target_observed[j]-param_grid[k], dtype=int)))
+                          np.array(bootstrap_samples_coordinate[valid] < 2 * self.target_observed[j] \
+                                   -param_grid[k], dtype=int)))
 
                 pivot = pivot / np.sum(np.exp(approx_sel_probabilities[valid]))
                 pivots_over_grid[k] = 2 * min(pivot, 1 - pivot)
@@ -362,14 +367,17 @@ class approximate_conditional_density(rr.smooth_atom):
 
         pvalues = np.zeros(self.nactive)
 
+        bootstrap_samples = []
+        for i in range(B):
+            bootstrap_samples.append(self.sel_alg.bootstrap_sample())
+
         for j in range(self.nactive):
             self.sel_alg.setup_map(j)
-            bootstrap_sample = np.zeros(B)
+            #bootstrap_sample = np.zeros(B)
             approx_sel_probabilities = np.zeros(B)
-
+            _boot_coordinate = np.array([bootstrap_samples[i][j] for i in range(B)])
             for i in range(B):
-                bootstrap_sample[i] = self.sel_alg.bootstrap_sample(j)
-                value = bootstrap_sample[i] - self.target_observed[j]
+                value = bootstrap_samples[i][j] - self.target_observed[j]
                 grid_index = (np.abs(self.grid - value+param[j])).argmin()
                 #approx = approximate_conditional_prob(grid_value, self.sel_alg)
                 #approx_sel_probabilities[i] = -(approx.minimize2(j, nstep=100)[::-1])[0]
@@ -378,7 +386,7 @@ class approximate_conditional_density(rr.smooth_atom):
             valid = ~np.isnan(approx_sel_probabilities)
 
             pivot = np.sum(np.multiply(np.exp(approx_sel_probabilities[valid]),
-                         np.array(bootstrap_sample[valid] < 2 * self.target_observed[j]-param[j], dtype=int)))
+                         np.array(_boot_coordinate[valid] < 2 * self.target_observed[j]-param[j], dtype=int)))
 
             pivot = pivot / np.sum(np.exp(approx_sel_probabilities[valid]))
             pivot = 2 * min(pivot, 1-pivot)

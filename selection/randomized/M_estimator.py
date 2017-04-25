@@ -154,7 +154,7 @@ class M_estimator(query):
         # observed state for score
 
         self.observed_score_state = np.hstack([_beta_unpenalized * _sqrt_scaling,
-                                               -loss.smooth_objective(beta_full, 'grad')[inactive] / _sqrt_scaling])
+                                      -loss.smooth_objective(beta_full, 'grad')[inactive] / _sqrt_scaling])
 
         # form linear part
 
