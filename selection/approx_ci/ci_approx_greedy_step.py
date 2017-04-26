@@ -211,11 +211,10 @@ class approximate_conditional_density(rr.smooth_atom):
 
     def solve_approx(self):
 
-        #defining the grid on which marginal conditional densities will be evaluated
-        grid_length = 201
-        self.grid = np.linspace(-5, 15, num=grid_length)
-        #self.grid = np.linspace(-5*np.amax(np.absolute(target_observed)), 5*np.amax(np.absolute(target_observed)), num=grid_length)
-        #s_obs = np.round(self.target_observed, decimals =1)
+        # defining the grid on which marginal conditional densities will be evaluated
+        grid_length = 600
+        self.grid = np.linspace(-6 * np.amax(np.absolute(self.target_observed)),
+                                6 * np.amax(np.absolute(self.target_observed)), num=grid_length)
 
         print("observed values", self.target_observed)
         self.ind_obs = np.zeros(self.nactive, int)
@@ -224,15 +223,14 @@ class approximate_conditional_density(rr.smooth_atom):
 
         for j in range(self.nactive):
             obs = self.target_observed[j]
-            self.norm[j] = self.target_cov[j,j]
+            self.norm[j] = self.target_cov[j, j]
             if obs < self.grid[0]:
                 self.ind_obs[j] = 0
             elif obs > np.max(self.grid):
-                self.ind_obs[j] = grid_length-1
+                self.ind_obs[j] = grid_length - 1
             else:
-                self.ind_obs[j] = np.argmin(np.abs(self.grid-obs))
+                self.ind_obs[j] = np.argmin(np.abs(self.grid - obs))
             self.h_approx[j, :] = self.approx_conditional_prob(j)
-
 
     def approx_conditional_prob(self, j):
         h_hat = []
@@ -240,106 +238,98 @@ class approximate_conditional_density(rr.smooth_atom):
         self.sel_alg.setup_map(j)
 
         for i in range(self.grid.shape[0]):
-
             approx = approximate_conditional_prob_fs(self.grid[i], self.sel_alg)
-            h_hat.append(-(approx.minimize2(j, nstep=50)[::-1])[0])
+            h_hat.append(
+                -(approx.minimize2(j, nstep=150)[::-1])[0])  ## change number of steps here not to get zero intervals
 
         return np.array(h_hat)
 
-    def area_normalized_density(self, j, mean):
+    def approximate_confidence_intervals(self, B=1000, alpha=0.1):
 
-        normalizer = 0.
-        grad_normalizer = 0.
-        approx_nonnormalized = []
+        LU = np.zeros((self.nactive, 2))
 
-        for i in range(self.grid.shape[0]):
-            approx_density = np.exp(-np.true_divide((self.grid[i] - mean) ** 2, 2 * self.norm[j])
-                                    + (self.h_approx[j,:])[i])
-            normalizer += approx_density
-            grad_normalizer +=  (-mean/self.norm[j] + self.grid[i]/self.norm[j])* approx_density
-            approx_nonnormalized.append(approx_density)
+        bootstrap_samples = []
+        for i in range(B):
+            bootstrap_samples.append(self.sel_alg.bootstrap_sample())
 
-        return np.cumsum(np.array(approx_nonnormalized / normalizer)), normalizer, grad_normalizer
+        for j in range(self.nactive):
+            grid_length = 600
+            param_grid = np.linspace(-6 * np.amax(np.absolute(self.target_observed)),
+                                     6 * np.amax(np.absolute(self.target_observed)), num=grid_length)
 
-    def smooth_objective_MLE(self, param, j, mode='both', check_feasibility=False):
+            self.sel_alg.setup_map(j)
+            bootstrap_samples_coordinate = np.array([bootstrap_samples[i][j] for i in range(B)])
 
-        param = self.apply_offset(param)
+            # for i in range(B):
+            #    bootstrap_sample[i] = self.sel_alg.bootstrap_sample(j)
 
-        approx_normalizer = self.area_normalized_density(j,param)
+            pivots_over_grid = np.zeros(param_grid.shape[0])
+            approx_sel_probabilities = np.zeros(B)
 
-        f = (param**2)/(2*self.norm[j]) - (self.target_observed[j]*param)/self.norm[j] + \
-            log(approx_normalizer[1])
+            for k in range(param_grid.shape[0]):
+                for i in range(B):
+                    value = bootstrap_samples_coordinate[i] - self.target_observed[j]
+                    grid_index = (np.abs(self.grid - value + param_grid[k])).argmin()
+                    # approx = approximate_conditional_prob(grid_value, self.sel_alg)
+                    # approx_sel_probabilities[i] = -(approx.minimize2(j, nstep=100)[::-1])[0]
+                    approx_sel_probabilities[i] = self.h_approx[j, grid_index]
 
-        g = param/self.norm[j] - self.target_observed[j]/self.norm[j] + \
-            approx_normalizer[2]/approx_normalizer[1]
+                valid = ~np.isnan(approx_sel_probabilities)
 
-        if mode == 'func':
-            return self.scale(f)
-        elif mode == 'grad':
-            return self.scale(g)
-        elif mode == 'both':
-            return self.scale(f), self.scale(g)
-        else:
-            raise ValueError("mode incorrectly specified")
+                pivot = np.sum(np.multiply(np.exp(approx_sel_probabilities[valid]), \
+                                           np.array(bootstrap_samples_coordinate[valid] < 2 * self.target_observed[j] \
+                                                    - param_grid[k], dtype=int)))
 
-    def approx_MLE_solver(self, j, step=1, nstep=100, tol=1.e-5):
+                pivot = pivot / np.sum(np.exp(approx_sel_probabilities[valid]))
+                pivots_over_grid[k] = 2 * min(pivot, 1 - pivot)
 
-        current = self.target_observed[j]
-        current_value = np.inf
+            region = param_grid[(pivots_over_grid >= np.true_divide(alpha, 2)) \
+                                & (pivots_over_grid <= 1 - np.true_divide(alpha, 2))]
 
-        objective = lambda u: self.smooth_objective_MLE(u, j, 'func')
-        grad = lambda u: self.smooth_objective_MLE(u, j, 'grad')
+            if region.size > 0:
+                LU[j, 0], LU[j, 1] = np.nanmin(region), np.nanmax(region)
+            else:
+                return None
 
-        for itercount in range(nstep):
+        return LU
 
-            newton_step = grad(current) * self.norm[j]
+    def approximate_pvalues(self, param=None, B=1000):
 
-            # make sure proposal is a descent
-            count = 0
-            while True:
-                proposal = current - step * newton_step
-                proposed_value = objective(proposal)
+        if param is None:
+            param = np.zeros(self.nactive)
 
-                if proposed_value <= current_value:
-                    break
-                step *= 0.5
+        pvalues = np.zeros(self.nactive)
 
-            # stop if relative decrease is small
+        bootstrap_samples = []
+        for i in range(B):
+            bootstrap_samples.append(self.sel_alg.bootstrap_sample())
 
-            if np.fabs(current_value - proposed_value) < tol * np.fabs(current_value):
-                current = proposal
-                current_value = proposed_value
-                break
+        for j in range(self.nactive):
+            self.sel_alg.setup_map(j)
+            # bootstrap_sample = np.zeros(B)
+            approx_sel_probabilities = np.zeros(B)
+            _boot_coordinate = np.array([bootstrap_samples[i][j] for i in range(B)])
+            for i in range(B):
+                value = bootstrap_samples[i][j] - self.target_observed[j]
+                grid_index = (np.abs(self.grid - value + param[j])).argmin()
+                # approx = approximate_conditional_prob(grid_value, self.sel_alg)
+                # approx_sel_probabilities[i] = -(approx.minimize2(j, nstep=100)[::-1])[0]
+                approx_sel_probabilities[i] = self.h_approx[j, grid_index]
 
-            current = proposal
-            current_value = proposed_value
+            valid = ~np.isnan(approx_sel_probabilities)
 
-            if itercount % 4 == 0:
-                step *= 2
+            pivot = np.sum(np.multiply(np.exp(approx_sel_probabilities[valid]),
+                                       np.array(_boot_coordinate[valid] < 2 * self.target_observed[j] - param[j],
+                                                dtype=int)))
 
-        value = objective(current)
-        return current, value
+            pivot = pivot / np.sum(np.exp(approx_sel_probabilities[valid]))
+            pivot = 2 * min(pivot, 1 - pivot)
+            pvalues[j] = pivot
+            if pvalues[j] == 0:
+                return None
+            print(pvalues[j])
 
-    def approximate_ci(self, j):
+        # area_vec = self.area_normalized_density(j, param)
+        # area = area_vec[self.ind_obs[j]]
 
-        grid_length = 201
-        #param_grid = np.linspace(-5*np.amax(np.absolute(self.target_observed)), 5*np.amax(np.absolute(self.target_observed)), num=grid_length)
-        param_grid = np.linspace(-5, 15, num=201)
-        area = np.zeros(param_grid.shape[0])
-
-        for k in range(param_grid.shape[0]):
-            area_vec = self.area_normalized_density(j, param_grid[k])[0]
-            area[k] = area_vec[self.ind_obs[j]]
-
-        region = param_grid[(area >= 0.05) & (area <= 0.95)]
-        if region.size > 0:
-            return np.nanmin(region), np.nanmax(region)
-        else:
-            return 0, 0
-
-    def approximate_pvalue(self, j, param):
-
-        area_vec = self.area_normalized_density(j, param)[0]
-        area = area_vec[self.ind_obs[j]]
-
-        return 2*min(area, 1-area)
+        return pvalues

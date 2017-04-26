@@ -222,6 +222,15 @@ class greedy_score_step_approx(greedy_score_step):
         self.offset_inactive = self.null_statistic[self.nactive:]
 
 
+    def bootstrap_sample(self, solve_args={'min_its': 20, 'tol': 1.e-10}):
+        X, y = self.loss.data
+        n = X.shape[0]
+        sampler = lambda: np.random.choice(n, size=(n,), replace=True)
+        indices = sampler()
+        _boot_loss = self.loss.subsample(indices)
+        _beta_unpenalized = restricted_Mest(_boot_loss, self._overall)
+        return _beta_unpenalized
+
 
 
 

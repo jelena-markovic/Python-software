@@ -107,20 +107,21 @@ def report(niter=50, **kwargs):
 
     split_report = reports.reports['test_glm']
     results = reports.collect_multiple_runs(split_report['test'],
-                                                     split_report['columns'],
-                                                     niter,
-                                                     reports.summarize_all,
-                                                     **kwargs)
-    results.to_pickle("alt_bootstrap.pkl")
-    read_results = pd.read_pickle("alt_bootstrap.pkl")
+                                            split_report['columns'],
+                                            niter,
+                                            reports.summarize_all,
+                                            **kwargs)
+
+    results.to_pickle("alt_bootstrap_glm.pkl")
+    read_results = pd.read_pickle("alt_bootstrap_glm.pkl")
     fig = reports.pivot_plot_plus_naive(read_results)
-    fig.suptitle("Alternative bootstrap", fontsize=20)
-    fig.savefig('alt_bootstrap.pdf')
+    fig.suptitle("Alternative bootstrap GLM", fontsize=20)
+    label = "_".join(["alternative_bootstrap_glm", kwargs['loss'], ".pdf"])
+    fig.savefig(label)
 
 
 if __name__=='__main__':
-
     kwargs = {'s': 0, 'n': 500, 'p': 100, 'snr': 5, 'rho':0, 'lam_frac': 2.,
               'loss': 'logistic', 'randomizer': 'gaussian'}
-    report(niter=50, **kwargs)
+    report(niter=1, **kwargs)
 

@@ -1,5 +1,6 @@
 from __future__ import print_function
 import numpy as np
+import pandas as pd
 import time
 import regreg.api as rr
 import selection.tests.reports as reports
@@ -13,7 +14,9 @@ from selection.randomized.query import naive_confidence_intervals
 from selection.randomized.query import naive_pvalues
 
 
-@register_report(['cover', 'ci_length', 'truth', 'naive_cover', 'naive_pvalues'])
+@register_report(['truth', 'cover', 'ci_length_clt',
+                  'naive_pvalues', 'covered_naive', 'ci_length_naive',
+                  'active_var'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_greedy_step(n=200,
@@ -68,14 +71,19 @@ def test_greedy_step(n=200,
     nactive = np.sum(active)
     print("active set, true_support", active_set, true_support)
     true_vec = beta[active]
-    print("true coefficients", true_vec)
+    #print("true coefficients", true_vec)
 
-    if (set(active_set).intersection(set(true_support)) == set(true_support))== True:
+    active_var = np.zeros(nactive, np.bool)
+    for i in range(nactive):
+        active_var[i] = active_set[i] in true_support
 
-        ci_active = np.zeros((nactive, 2))
-        covered = np.zeros(nactive, np.bool)
-        ci_length = np.zeros(nactive)
-        pivots = np.zeros(nactive)
+    if (set(active_set).intersection(set(true_support)) == set(true_support)) == True:
+
+        ci = approximate_conditional_density(GS)
+        ci.solve_approx()
+        pvalues = ci.approximate_pvalues()
+        if pvalues is None:
+            return None
 
         class target_class(object):
             def __init__(self, target_cov):
@@ -83,43 +91,50 @@ def test_greedy_step(n=200,
                 self.shape = target_cov.shape
 
         target = target_class(GS.target_cov)
-        ci_naive = naive_confidence_intervals(target, GS.target_observed)
         naive_pvals = naive_pvalues(target, GS.target_observed, true_vec)
-        naive_covered = np.zeros(nactive)
-        toc = time.time()
 
-        for j in range(nactive):
-            ci_active[j, :] = np.array(ci.approximate_ci(j))
-            if (ci_active[j, 0] <= true_vec[j]) and (ci_active[j,1] >= true_vec[j]):
-                covered[j] = 1
-            ci_length[j] = ci_active[j,1] - ci_active[j,0]
-            #print(ci_active[j, :])
-            pivots[j] = ci.approximate_pvalue(j, true_vec[j])
+        def coverage(LU):
+            L, U = LU[:, 0], LU[:, 1]
+            covered = np.zeros(nactive)
+            ci_length = np.zeros(nactive)
 
-            # naive ci
-            if (ci_naive[j,0]<=true_vec[j]) and (ci_naive[j,1]>=true_vec[j]):
-                naive_covered[j]+=1
+            for j in range(nactive):
+                if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
+                    covered[j] = 1
+                ci_length[j] = U[j] - L[j]
+            return covered, ci_length
 
-        tic = time.time()
-        print('ci time now', tic - toc)
+        selective_ci = ci.approximate_confidence_intervals()
+        if selective_ci is None:
+            return None
+        sel_covered, sel_length = coverage(selective_ci)
 
-        return covered, ci_length, pivots, naive_covered, naive_pvals
-    #else:
-    #    return 0
+        naive_ci = naive_confidence_intervals(target, GS.target_observed)
+        naive_covered, naive_length = coverage(naive_ci)
+
+        return pvalues, sel_covered, sel_length, \
+               naive_pvals, naive_covered, naive_length, \
+               active_var
+
 
 def report(niter=200, **kwargs):
 
-    kwargs = {'s': 0, 'n': 200, 'p': 30, 'snr': 7, 'loss': 'gaussian', 'randomizer': 'gaussian'}
-    split_report = reports.reports['test_greedy_step']
-    screened_results = reports.collect_multiple_runs(split_report['test'],
-                                                     split_report['columns'],
-                                                     niter,
-                                                     reports.summarize_all,
-                                                     **kwargs)
 
-    fig = reports.pivot_plot_plus_naive(screened_results)
-    fig.savefig('approx_pivots_FS.pdf')
+    split_report = reports.reports['test_greedy_step']
+    results = reports.collect_multiple_runs(split_report['test'],
+                                            split_report['columns'],
+                                            niter,
+                                            reports.summarize_all,
+                                            **kwargs)
+
+    results.to_pickle("alt_bootstrap_gs.pkl")
+    read_results = pd.read_pickle("alt_bootstrap_gs.pkl")
+    fig = reports.pivot_plot_plus_naive(read_results)
+    fig.suptitle("Alternative bootstrap GS", fontsize=20)
+    label = "_".join(["alternative_bootstrap_gs", kwargs['loss'], ".pdf"])
+    fig.savefig(label)
 
 
 if __name__=='__main__':
-    report()
+    kwargs = {'s': 0, 'n': 200, 'p': 30, 'snr': 7, 'loss': 'gaussian', 'randomizer': 'gaussian'}
+    report(niter = 10, **kwargs)
