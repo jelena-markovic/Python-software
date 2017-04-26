@@ -112,12 +112,13 @@ def report(niter=50, **kwargs):
                                             reports.summarize_all,
                                             **kwargs)
 
-    results.to_pickle("alt_bootstrap_glm.pkl")
-    read_results = pd.read_pickle("alt_bootstrap_glm.pkl")
+    pdf_label = "_".join(["alternative_bootstrap_glm", kwargs['loss'], str(kwargs['n']), str(kwargs['p']), ".pdf"])
+    pkl_label = "_".join(["alternative_bootstrap_glm", kwargs['loss'], str(kwargs['n']), str(kwargs['p']), ".pkl"])
+    results.to_pickle(pkl_label)
+    read_results = pd.read_pickle(pkl_label)
     fig = reports.pivot_plot_plus_naive(read_results)
     fig.suptitle("Alternative bootstrap GLM", fontsize=20)
-    label = "_".join(["alternative_bootstrap_glm", kwargs['loss'], str(kwargs['n']), str(kwargs['p']), ".pdf"])
-    fig.savefig(label)
+    fig.savefig(pdf_label)
 
 
 if __name__=='__main__':
