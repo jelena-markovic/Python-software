@@ -131,10 +131,10 @@ def report(niter=200, **kwargs):
     read_results = pd.read_pickle("alt_bootstrap_gs.pkl")
     fig = reports.pivot_plot_plus_naive(read_results)
     fig.suptitle("Alternative bootstrap GS", fontsize=20)
-    label = "_".join(["alternative_bootstrap_gs", kwargs['loss'], ".pdf"])
+    label = "_".join(["alternative_bootstrap_gs", kwargs['loss'], str(kwargs['n']), str(kwargs['p']), ".pdf"])
     fig.savefig(label)
 
 
 if __name__=='__main__':
     kwargs = {'s': 0, 'n': 200, 'p': 30, 'snr': 7, 'loss': 'gaussian', 'randomizer': 'gaussian'}
-    report(niter = 10, **kwargs)
+    report(niter = 50, **kwargs)

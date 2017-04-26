@@ -304,7 +304,7 @@ class approximate_conditional_density(rr.smooth_atom):
         for i in range(self.grid.shape[0]):
             approx = approximate_conditional_prob(self.grid[i], self.sel_alg)
             h_hat.append(
-                -(approx.minimize2(j, nstep=150)[::-1])[0])  ## change number of steps here not to get zero intervals
+                -(approx.minimize2(j, nstep=200)[::-1])[0])  ## change number of steps here not to get zero intervals
 
         return np.array(h_hat)
 
@@ -318,9 +318,9 @@ class approximate_conditional_density(rr.smooth_atom):
             bootstrap_samples.append(self.sel_alg.bootstrap_sample())
 
         for j in range(self.nactive):
-            grid_length = 600
-            param_grid = np.linspace(-6 * np.amax(np.absolute(self.target_observed)),
-                                      6 * np.amax(np.absolute(self.target_observed)), num=grid_length)
+            grid_length = 800
+            param_grid = np.linspace(-10 * np.amax(np.absolute(self.target_observed)),
+                                      10 * np.amax(np.absolute(self.target_observed)), num=grid_length)
 
             self.sel_alg.setup_map(j)
             bootstrap_samples_coordinate = np.array([bootstrap_samples[i][j] for i in range(B)])
