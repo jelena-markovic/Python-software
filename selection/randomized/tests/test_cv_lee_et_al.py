@@ -184,7 +184,7 @@ def test_lee_et_al(n=300,
         else:
             return None
 
-
+        print(active_var)
 
         print(pvalues)
         q = 0.2

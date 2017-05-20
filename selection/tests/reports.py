@@ -448,6 +448,30 @@ def compute_power(multiple_results):
         result['power'] = power
     return result
 
+def sign_decisions(sign_vector_estimates, sign_vector_true):
+    total_length = sign_vector_true.shape[0]
+    NA_decisions = np.array([sign_vector_estimates[i] is None for i in range(total_length)], np.bool)
+    if (np.shape(NA_decisions)[0]==np.sum(NA_decisions)):
+        true_decisions_sum = 0
+    else:
+        true_decisions = np.multiply(sign_vector_estimates[~NA_decisions], sign_vector_true[~NA_decisions])
+        true_decisions_sum = np.sum(np.array(true_decisions==1, np.int))
+    return true_decisions_sum, np.sum(NA_decisions), total_length
+
+def compute_signs(multiple_results):
+    result = {}
+    if ('sign_decision_selective' in multiple_results.columns) \
+            and ('sign_decision_art' in multiple_results.columns):
+        sign_decisions_selective = np.array(multiple_results['sign_decision_selective'])
+        sign_decisions_art = np.array(multiple_results['sign_decision_art'])
+        true_sign = np.array(multiple_results['true_sign'])
+        #print("art", sign_decisions_art)
+
+        result['signs_selective'] = sign_decisions(sign_decisions_selective, true_sign)
+        result['signs_art'] = sign_decisions(sign_decisions_art, true_sign)
+    return result
+
+
 
 def compute_screening(multiple_results):
     return {'screening:': 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])}
@@ -463,6 +487,7 @@ def summarize_all(multiple_results):
     result.update(compute_length_frac(multiple_results))
     result.update(compute_FDP(multiple_results))
     result.update(compute_power(multiple_results))
+    result.update(compute_signs(multiple_results))
     for i in result:
         print(i, result[i])
 
