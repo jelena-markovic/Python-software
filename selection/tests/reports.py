@@ -451,12 +451,16 @@ def compute_power(multiple_results):
 def sign_decisions(sign_vector_estimates, sign_vector_true):
     total_length = sign_vector_true.shape[0]
     NA_decisions = np.array([sign_vector_estimates[i] is None for i in range(total_length)], np.bool)
+    non_NA_decisions_sum = total_length - np.sum(NA_decisions)
     if (np.shape(NA_decisions)[0]==np.sum(NA_decisions)):
         true_decisions_sum = 0
     else:
         true_decisions = np.multiply(sign_vector_estimates[~NA_decisions], sign_vector_true[~NA_decisions])
         true_decisions_sum = np.sum(np.array(true_decisions==1, np.int))
-    return true_decisions_sum, np.sum(NA_decisions), total_length
+    false_decisions_sum = non_NA_decisions_sum-true_decisions_sum
+    sign_error_rate = np.true_divide(false_decisions_sum, total_length)
+    return true_decisions_sum, false_decisions_sum, non_NA_decisions_sum, total_length, sign_error_rate
+
 
 def compute_signs(multiple_results):
     result = {}
@@ -466,7 +470,6 @@ def compute_signs(multiple_results):
         sign_decisions_art = np.array(multiple_results['sign_decision_art'])
         true_sign = np.array(multiple_results['true_sign'])
         #print("art", sign_decisions_art)
-
         result['signs_selective'] = sign_decisions(sign_decisions_selective, true_sign)
         result['signs_art'] = sign_decisions(sign_decisions_art, true_sign)
     return result

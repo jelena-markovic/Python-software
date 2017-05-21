@@ -42,7 +42,6 @@ def selective_pivot(obs, threshold, sigma, truth):
         v = 0
     return v
 
-
 def selective_interval(obs, threshold, sigma, alpha=0.1):
 
     lb = obs - 5 * sigma
@@ -56,7 +55,6 @@ def selective_interval(obs, threshold, sigma, alpha=0.1):
     L_conf = bisect(FL, lb, ub)
     U_conf = bisect(FU, lb, ub)
     return np.array([L_conf, U_conf])
-
 
 def coverage(LU, truth):
     L, U = LU
@@ -74,6 +72,14 @@ def sign_decision(obs, pvalue, pvalue_threshold):
     else:
         return None
 
+def sign_decision1(LU):
+    L, U = LU
+    if L>0:
+        return 1
+    elif U<0:
+        return -1
+    else:
+        return None
 
 @register_report(['pvalue', 'cover', 'ci_length_clt', 'sign_decision_selective',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive', 'sign_decision_art',
@@ -81,9 +87,9 @@ def sign_decision(obs, pvalue, pvalue_threshold):
 @set_seed_iftrue(SET_SEED)
 @set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
-def test_simple_problem(n=100, sigma=1, alpha=0.1, alpha_S=0.8):
-    #truth = -1./np.sqrt(n)
-    truth = -1./n
+def test_simple_problem(n=100, sigma=1, alpha=0.1, alpha_S=0.2):
+    truth = -1./np.sqrt(n)
+    #truth = -1./n
     true_sign = np.sign(truth)
     y = sigma*np.random.standard_normal(n) + truth
 
@@ -93,16 +99,23 @@ def test_simple_problem(n=100, sigma=1, alpha=0.1, alpha_S=0.8):
         return None
     _pivot = selective_pivot(obs, threshold, sigma, np.sqrt(n)*truth)
     _pvalue = selective_pivot(obs, threshold, sigma, truth=0)
-    _selective_ci = selective_interval(obs, threshold, sigma, alpha=0.1)
+    _selective_ci = selective_interval(obs, threshold, sigma, alpha=alpha_S)
+    print(_selective_ci)
+    print(_pvalue)
     _covered, _length = coverage(_selective_ci, np.sqrt(n)*truth)
 
     _naive_pivot = naive_pivot(obs, sigma, np.sqrt(n)*truth)
     _naive_pvalue = naive_pivot(obs, sigma, truth=0)
-    _naive_ci = naive_interval(obs, sigma, alpha=0.1)
+    _naive_ci = naive_interval(obs, sigma, alpha=2*alpha_S*alpha)
+    print(_naive_ci)
+    print(_naive_pvalue)
     _naive_covered, _naive_length = coverage(_naive_ci, np.sqrt(n)*truth)
 
-    _art_sign_decision = sign_decision(obs, _naive_pvalue, 2*alpha_S*alpha)
-    _selective_sign_decision = sign_decision(obs, _pvalue, alpha_S)
+    _art_sign_decision = sign_decision1(_naive_ci)
+    _selective_sign_decision = sign_decision1(_selective_ci)
+
+    #_art_sign_decision = sign_decision(obs, _naive_pvalue, pvalue_threshold=2*alpha_S*alpha)
+    # _selective_sign_decision = sign_decision(obs, _pvalue, pvalue_threshold=alpha_S)
 
     print("signs", _art_sign_decision, _selective_sign_decision)
 
@@ -133,4 +146,4 @@ if __name__ == '__main__':
 
     np.random.seed(500)
     kwargs = {'n': 100, 'sigma': 1}
-    report(niter=1000, **kwargs)
+    report(niter=500, **kwargs)
