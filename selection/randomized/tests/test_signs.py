@@ -87,9 +87,9 @@ def sign_decision1(LU):
 @set_seed_iftrue(SET_SEED)
 @set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
-def test_simple_problem(n=100, sigma=1, alpha=0.1, alpha_S=0.2):
-    truth = -1./np.sqrt(n)
-    #truth = -1./n
+def test_simple_problem(n=200, sigma=1, alpha=0.1, alpha_S=0.1):
+    #truth = -1./np.sqrt(n)
+    truth = -2./n
     true_sign = np.sign(truth)
     y = sigma*np.random.standard_normal(n) + truth
 
@@ -99,7 +99,7 @@ def test_simple_problem(n=100, sigma=1, alpha=0.1, alpha_S=0.2):
         return None
     _pivot = selective_pivot(obs, threshold, sigma, np.sqrt(n)*truth)
     _pvalue = selective_pivot(obs, threshold, sigma, truth=0)
-    _selective_ci = selective_interval(obs, threshold, sigma, alpha=alpha_S)
+    _selective_ci = selective_interval(obs, threshold, sigma, alpha=2*alpha_S)
     print(_selective_ci)
     print(_pvalue)
     _covered, _length = coverage(_selective_ci, np.sqrt(n)*truth)
@@ -146,4 +146,4 @@ if __name__ == '__main__':
 
     np.random.seed(500)
     kwargs = {'n': 100, 'sigma': 1}
-    report(niter=500, **kwargs)
+    report(niter=200, **kwargs)
