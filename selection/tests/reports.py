@@ -24,6 +24,7 @@ def collect_multiple_runs(test_fn, columns, nrun, summary_fn, *args, **kwargs):
     for i in range(nrun):
         print(i)
         count, result = test_fn(*args, **kwargs)
+        print(i)
         #print(result)
         #print(len(np.atleast_1d(result[0])))
         if hasattr(result, "__len__"):
@@ -48,15 +49,14 @@ def collect_multiple_runs(test_fn, columns, nrun, summary_fn, *args, **kwargs):
             summary_fn(pd.concat(dfs))
     return pd.concat(dfs)
 
-def pvalue_plot(multiple_results, screening=False, fig=None, colors=['r','g']):
+def pvalue_plot(multiple_results, screening=False, fig=None, label = '$H_0$', colors=['b','r']):
     """
     Extract pvalues and group by 
     null and alternative.
     """
-
-    P0 = multiple_results['pvalue'][~multiple_results['active']]
+    P0 = multiple_results['pvalue'][~multiple_results['active_var']]
     P0 = P0[~pd.isnull(P0)]
-    PA = multiple_results['pvalue'][multiple_results['active']]
+    PA = multiple_results['pvalue'][multiple_results['active_var']]
     PA = PA[~pd.isnull(PA)]
 
     if fig is None:
@@ -70,14 +70,16 @@ def pvalue_plot(multiple_results, screening=False, fig=None, colors=['r','g']):
     if len(P0) > 0:
         ecdf0 = sm.distributions.ECDF(P0)
         F0 = ecdf0(grid)
-        ax.plot(grid, F0, '--o', c=colors[0], lw=2, label=r'$H_0$')
+        ax.plot(grid, F0, '--o', c=colors[0], lw=2, label=label)
     if len(PA) > 0:
         ecdfA = sm.distributions.ECDF(PA)
         FA = ecdfA(grid)
         ax.plot(grid, FA, '--o', c=colors[1], lw=2, label=r'$H_A$')
 
-    ax.plot([0, 1], [0, 1], 'k-', lw=2)
-    ax.legend(loc='lower right')
+    ax.plot([0, 1], [0, 1], 'k-', lw=1)
+    ax.set_xlabel("observed p-value", fontsize=18)
+    ax.set_ylabel("empirical CDF", fontsize=18)
+    ax.legend(loc='lower right', fontsize=18)
 
     if screening:
         screen = 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])
@@ -90,9 +92,9 @@ def naive_pvalue_plot(multiple_results, screening=False, fig=None, colors=['r', 
     null and alternative.
     """
 
-    P0 = multiple_results['naive_pvalue'][~multiple_results['active']]
+    P0 = multiple_results['naive_pvalues'][~multiple_results['active_var']]
     P0 = P0[~pd.isnull(P0)]
-    PA = multiple_results['naive_pvalue'][multiple_results['active']]
+    PA = multiple_results['naive_pvalues'][multiple_results['active_var']]
     PA = PA[~pd.isnull(PA)]
 
     if fig is None:
@@ -106,14 +108,16 @@ def naive_pvalue_plot(multiple_results, screening=False, fig=None, colors=['r', 
     if len(P0) > 0:
         ecdf0 = sm.distributions.ECDF(P0)
         F0 = ecdf0(grid)
-        ax.plot(grid, F0, '--o', c=colors[0], lw=2, label=r'$H_0$ naive')
+        ax.plot(grid, F0, '--o', c=colors[0], lw=2, label=r'Naive p-values')
     if len(PA) > 0:
         ecdfA = sm.distributions.ECDF(PA)
         FA = ecdfA(grid)
         ax.plot(grid, FA, '--o', c=colors[1], lw=2, label=r'$H_A$ naive')
 
     ax.plot([0, 1], [0, 1], 'k-', lw=2)
-    ax.legend(loc='lower right')
+    ax.set_xlabel("Observed p-pvalue", fontsize=18)
+    ax.set_ylabel("Empirical CDF", fontsize=18)
+    ax.legend(loc='lower right', fontsize=18)
 
     if screening:
         screen = 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])
@@ -227,6 +231,45 @@ def pivot_plot_2in1(multiple_results, coverage=True, color='b', label=None, fig=
 
     return fig
 
+def pivot_plot_plus_naive(multiple_results, coverage=True, color='b', label=None, fig=None):
+    """
+    Extract pivots at truth and mle.
+    """
+
+    if fig is None:
+        fig = plt.figure()
+    ax = fig.gca()
+
+    fig.suptitle('Lee et al. and naive p-values')
+
+    if 'pivot' in multiple_results.columns:
+        ecdf = sm.distributions.ECDF(multiple_results['pivot'])
+    elif 'truth' in multiple_results.columns:
+        ecdf = sm.distributions.ECDF(multiple_results['truth'])
+    elif 'pvalue' in multiple_results.columns:
+        ecdf = sm.distributions.ECDF(multiple_results['pvalue'])
+
+    G = np.linspace(0, 1)
+    F_pivot = ecdf(G)
+    #print(color)
+    ax.plot(G, F_pivot, '-o', c=color, lw=2, label="Lee et al. p-values")
+    ax.plot([0, 1], [0, 1], 'k-', lw=2)
+
+    if 'naive_pvalues' in multiple_results.columns:
+        ecdf_naive = sm.distributions.ECDF(multiple_results['naive_pvalues'])
+    F_naive = ecdf_naive(G)
+    ax.plot(G, F_naive, '-o', c='r', lw=2, label="Naive p-values")
+    ax.plot([0, 1], [0, 1], 'k-', lw=2)
+
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.set_xlabel("Observed value", fontsize=18)
+    ax.set_ylabel("Empirical CDF", fontsize=18)
+    ax.legend(loc='lower right', fontsize=18)
+
+    return fig
+
+
 
 
 
@@ -319,6 +362,18 @@ def compute_pivots(multiple_results):
     if 'truth' in multiple_results.columns:
         pivots = multiple_results['truth']
         return {'pivot (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    if 'truth' in multiple_results.columns:
+        pivots = multiple_results['truth']
+        return {'pivot (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    if 'pvalue' in multiple_results.columns:
+        pivots = multiple_results['pvalue']
+        return {'selective pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    return {}
+
+def compute_naive_pivots(multiple_results):
+    if 'naive_pvalues' in multiple_results.columns:
+        pivots = multiple_results['naive_pvalues']
+        return {'naive pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
     return {}
 
 def boot_clt_pivots(multiple_results):
@@ -386,6 +441,28 @@ def compute_length_frac(multiple_results):
         result['split/boot'] = np.median(np.divide(split, boot))
     return result
 
+def compute_FDP(multiple_results):
+    result = {}
+    if ('BH_decisions' in multiple_results.columns) and ('active_var' in multiple_results.columns):
+        BH_decisions = multiple_results['BH_decisions']
+        active_var = multiple_results['active_var']
+        BH_TP = BH_decisions[active_var].sum()
+        FDP = (BH_decisions.sum()-BH_TP)/(1.*max(BH_decisions.sum(),1))
+        result['FDP'] = FDP
+    return result
+
+
+def compute_power(multiple_results):
+    result = {}
+    if ('BH_decisions' in multiple_results.columns) and ('active_var' in multiple_results.columns):
+        BH_decisions = multiple_results['BH_decisions']
+        active_var = multiple_results['active_var']
+        BH_TP = BH_decisions[active_var].sum()
+        power = BH_TP
+        result['power'] = power
+    return result
+
+
 def compute_screening(multiple_results):
     return {'screening:': 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])}
 
@@ -398,6 +475,9 @@ def summarize_all(multiple_results):
     result.update(compute_screening(multiple_results))
     result.update(compute_lengths(multiple_results))
     result.update(compute_length_frac(multiple_results))
+    result.update(compute_FDP(multiple_results))
+    result.update(compute_power(multiple_results))
+    result.update(compute_naive_pivots(multiple_results))
     for i in result:
         print(i, result[i])
 

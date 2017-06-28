@@ -5,7 +5,6 @@ should be a gradient of the negative of the log-density. For a
 Gaussian density, this will be a convex function, not a concave function.
 """
 from __future__ import division, print_function
-
 import numpy as np
 import regreg.api as rr
 from scipy.stats import laplace, logistic, norm as ndist
@@ -21,7 +20,10 @@ class randomization(rr.smooth_atom):
                  grad_negative_log_density,
                  sampler,
                  lipschitz=1,
-                 log_density=None):
+                 log_density=None,
+                 CGF=None,  # cumulant generating function and gradient
+                 CGF_conjugate=None,  # convex conjugate of CGF and gradient
+                 ):
 
         rr.smooth_atom.__init__(self,
                                 shape)
@@ -37,6 +39,8 @@ class randomization(rr.smooth_atom):
             log_density = lambda x: np.log(density(x))
 
         self._log_density = log_density
+        self.CGF = CGF
+        self.CGF_conjugate = CGF_conjugate
 
     def smooth_objective(self, perturbation, mode='both', check_feasibility=False):
         """
@@ -82,7 +86,6 @@ class randomization(rr.smooth_atom):
         """
         Randomize the loss.
         """
-
         randomized_loss = rr.smooth_sum([loss])
         _randomZ = self.sample()
         randomized_loss.quadratic = rr.identity_quadratic(epsilon, 0, -_randomZ, 0)
@@ -106,6 +109,8 @@ class randomization(rr.smooth_atom):
         derivative_log_density = lambda x: -x/(scale**2)
         grad_negative_log_density = lambda x: x / scale**2
         sampler = lambda size: rv.rvs(size=shape + size)
+        CGF = isotropic_gaussian_CGF(shape, scale)
+        CGF_conjugate = isotropic_gaussian_CGF_conjugate(shape, scale)
 
         p = np.product(shape)
         constant = -0.5 * p * np.log(2 * np.pi * scale**2)
@@ -117,7 +122,10 @@ class randomization(rr.smooth_atom):
                              grad_negative_log_density,
                              sampler,
                              lipschitz=1./scale**2,
-                             log_density = lambda x: -0.5 * (np.atleast_2d(x)**2).sum(1) / scale**2 + constant)
+                             log_density = lambda x: -0.5 * (np.atleast_2d(x)**2).sum(1) / scale**2 + constant,
+                             CGF=CGF,
+                             CGF_conjugate=CGF_conjugate,
+                             )
 
     @staticmethod
     def gaussian(covariance):
@@ -164,13 +172,18 @@ class randomization(rr.smooth_atom):
         """
         rv = laplace(scale=scale, loc=0.)
         density = lambda x: np.product(rv.pdf(x))
+
+        grad_negative_log_density = lambda x: np.sign(x) / scale
+        sampler = lambda size: rv.rvs(size=shape + size)
         cdf = lambda x: laplace.cdf(x, loc=0., scale = scale)
         pdf = lambda x: laplace.pdf(x, loc=0., scale = scale)
         derivative_log_density = lambda x: -np.sign(x)/scale
         grad_negative_log_density = lambda x: np.sign(x) / scale
         sampler = lambda size: rv.rvs(size=shape + size)
-
+        CGF = laplace_CGF(shape, scale)
+        CGF_conjugate = laplace_CGF_conjugate(shape, scale)
         constant = -np.product(shape) * np.log(2 * scale)
+
         return randomization(shape,
                              density,
                              cdf,
@@ -179,7 +192,9 @@ class randomization(rr.smooth_atom):
                              grad_negative_log_density,
                              sampler,
                              lipschitz=1./scale**2,
-                             log_density = lambda x: -np.fabs(np.atleast_2d(x)).sum(1) / scale - np.log(scale) + constant)
+                             log_density = lambda x: -np.fabs(np.atleast_2d(x)).sum(1) / scale - np.log(scale) + constant,
+                             CGF=CGF,
+                             CGF_conjugate=CGF_conjugate,)
 
     @staticmethod
     def logistic(shape, scale):
@@ -269,7 +284,6 @@ class split(randomization):
             Coefficient in front of quadratic term
         Returns
         -------
-
         Subsampled loss multiplied by `n / m` where
         m is the subsample size out of a total
         sample size of n.
@@ -289,3 +303,115 @@ class split(randomization):
         randomized_loss.quadratic = quadratic
 
         return randomized_loss
+
+# Conjugate generating function for Gaussian
+
+def isotropic_gaussian_CGF(shape, scale): # scale = SD
+    return cumulant(shape,
+                    lambda x: (x**2).sum() * scale**2 / 2.,
+                    lambda x: scale**2 * x)
+
+def isotropic_gaussian_CGF_conjugate(shape, scale):  # scale = SD
+    return cumulant_conjugate(shape,
+                              lambda x: (x**2).sum() / (2 * scale**2),
+                              lambda x: x / scale**2)
+
+# Conjugate generating function for Laplace
+
+def _standard_laplace_CGF_conjugate(u):
+    """
+    sup_z uz + log(1 - z**2)
+    """
+    _zeros = (u == 0)
+    root = (-1 + np.sqrt(1 + u**2)) / (u + _zeros)
+    value = (root * u + np.log(1 - root**2)).sum()
+    return value
+
+def _standard_laplace_CGF_conjugate_grad(u):
+    """
+    sup_z uz + log(1 - z**2)
+    """
+    _zeros = (u == 0)
+    root = (-1 + np.sqrt(1 + u**2)) / (u + _zeros)
+    return root
+
+BIG = 10**10
+def laplace_CGF(shape, scale):
+    return cumulant(shape,
+                    lambda x: -np.log(1 - (scale * x)**2).sum() + BIG * (np.abs(x) > 1),
+                    lambda x: 2 * x * scale**2 / (1 - (scale * x)**2))
+
+def laplace_CGF_conjugate(shape, scale):
+    return cumulant_conjugate(shape,
+                              lambda x: _standard_laplace_CGF_conjugate(x / scale),
+                              lambda x: _standard_laplace_CGF_conjugate_grad(x / scale) / scale)
+
+class from_grad_func(rr.smooth_atom):
+
+    """
+    take a (func, grad) pair and make a smooth_objective
+    """
+
+
+    def __init__(self,
+                 shape,
+                 func,
+                 grad,
+                 coef=1.,
+                 offset=None,
+                 initial=None,
+                 quadratic=None):
+
+        rr.smooth_atom.__init__(self,
+                                shape,
+                                offset=offset,
+                                quadratic=quadratic,
+                                initial=initial,
+                                coef=coef)
+
+        self._func, self._grad = (func, grad)
+
+    def smooth_objective(self, param, mode='both', check_feasibility=False):
+        """
+        Evaluate the smooth objective, computing its value, gradient or both.
+        Parameters
+        ----------
+        mean_param : ndarray
+            The current parameter values.
+        mode : str
+            One of ['func', 'grad', 'both'].
+        check_feasibility : bool
+            If True, return `np.inf` when
+            point is not feasible, i.e. when `mean_param` is not
+            in the domain.
+        Returns
+        -------
+        If `mode` is 'func' returns just the objective value
+        at `mean_param`, else if `mode` is 'grad' returns the gradient
+        else returns both.
+        """
+
+        param = self.apply_offset(param)
+
+        if mode == 'func':
+            return self.scale(self._func(param))
+        elif mode == 'grad':
+            return self.scale(self._grad(param))
+        elif mode == 'both':
+            return self.scale(self._func(param)), self.scale(self._grad(param))
+        else:
+            raise ValueError("mode incorrectly specified")
+
+
+class cumulant(from_grad_func):
+    """
+    Class for CGF.
+    """
+    pass
+
+class cumulant_conjugate(from_grad_func):
+    """
+    Class for conjugate of a CGF.
+    """
+    pass
+
