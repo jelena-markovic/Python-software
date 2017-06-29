@@ -3,27 +3,10 @@ import pandas as pd
 
 from scipy.stats import t as tdist
 
-# def design(n, p, rho, equi_correlated):
-#     if equi_correlated:
-#         X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
-#              np.sqrt(rho) * np.random.standard_normal(n)[:, None])
-#     else:
-#         def AR1(rho, p):
-#             idx = np.arange(p)
-#             cov = rho ** np.abs(np.subtract.outer(idx, idx))
-#             return cov, np.linalg.cholesky(cov)
-
-#         sigmaX, cholX = AR1(rho=rho, p=p)
-#         X = np.random.standard_normal((n, p)).dot(cholX.T)
-#         # X = np.random.multivariate_normal(mean=np.zeros(p), cov = sigmaX, size = (n,))
-#         # print(X.shape)
-#     return X
 
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
                       random_signs=False, df=np.inf,
-                      scale=True, center=True,
-                      equi_correlated=True):
-
+                      scale=True, center=True):
 
     """
     A testing instance for the LASSO.
@@ -56,10 +39,6 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
     df : int
         Degrees of freedom for noise (from T distribution).
 
-    equi_correlated: bool
-        If true, design in equi-correlated,
-        Else design is AR.
-
     Returns
     -------
 
@@ -78,8 +57,9 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
     sigma : float
         Noise level.
     """
-    X=design(n,p, rho, equi_correlated)
 
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+                  np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
     if center:
         X -= X.mean(0)[None, :]
@@ -205,7 +185,8 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, signal=14,
 
     """
 
-    X= design(n,p, rho, equi_correlated)
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+            np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
     if center:
         X -= X.mean(0)[None,:]

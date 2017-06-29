@@ -19,6 +19,7 @@ class randomization(rr.smooth_atom):
                  derivative_log_density,
                  grad_negative_log_density,
                  sampler,
+                 sigma=None,
                  lipschitz=1,
                  log_density=None,
                  CGF=None,  # cumulant generating function and gradient
@@ -34,6 +35,7 @@ class randomization(rr.smooth_atom):
         self._grad_negative_log_density = grad_negative_log_density
         self._sampler = sampler
         self.lipschitz = lipschitz
+        self.sigma = sigma
 
         if log_density is None:
             log_density = lambda x: np.log(density(x))
@@ -121,6 +123,7 @@ class randomization(rr.smooth_atom):
                              derivative_log_density,
                              grad_negative_log_density,
                              sampler,
+                             sigma=scale,
                              lipschitz=1./scale**2,
                              log_density = lambda x: -0.5 * (np.atleast_2d(x)**2).sum(1) / scale**2 + constant,
                              CGF=CGF,

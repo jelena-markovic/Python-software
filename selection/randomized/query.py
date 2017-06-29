@@ -58,10 +58,10 @@ class query(object):
             opt_grad = opt_linear.T.dot(randomization_derivative)
         else:
             opt_grad = None
-        return data_grad, opt_grad #- self.grad_log_jacobian(opt_state)
+        return data_grad, opt_grad - self.grad_log_jacobian(opt_state)
 
     def construct_weights(self, full_state):
-        return self.randomization.gradient(full_state)
+        return self.randomization.gradient(full_state) ## grad_negative_log_density
 
     def linear_decomposition(self, target_score_cov, target_cov, observed_target_state):
         """
