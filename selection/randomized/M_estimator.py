@@ -503,7 +503,7 @@ class M_estimator(query):
 
             return -weights
         else:
-            print(full_state)
+            #print(full_state)
             return query.construct_weights(self, full_state)
 
 
@@ -522,7 +522,6 @@ class M_estimator(query):
             if self.inactive_marginal_groups.sum()>0:
                 full_state_plus = full_state+np.multiply(self.limits_marginal_groups, np.array(self.inactive_marginal_groups, np.float))
                 full_state_minus = full_state-np.multiply(self.limits_marginal_groups, np.array(self.inactive_marginal_groups, np.float))
-
 
             def fraction(full_state_plus, full_state_minus, inactive_marginal_groups):
                 return (np.divide(self.randomization._pdf(full_state_plus) - self.randomization._pdf(full_state_minus),
