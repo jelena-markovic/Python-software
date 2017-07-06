@@ -5,8 +5,7 @@
 
 # setup dir if needed
 
-DIR=/scratch/users/jelenam/high_dim/outputs/experiment_1
-
+DIR=/scratch/users/jelenam/high_dim/experiment_1
 
 mkdir -p $DIR
 

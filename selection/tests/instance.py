@@ -78,7 +78,8 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
     sigma : float
         Noise level.
     """
-    X=design(n,p, rho, equi_correlated)
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+                 np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
 
     if center:
@@ -205,7 +206,8 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, signal=14,
 
     """
 
-    X= design(n,p, rho, equi_correlated)
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+                  np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
     if center:
         X -= X.mean(0)[None,:]

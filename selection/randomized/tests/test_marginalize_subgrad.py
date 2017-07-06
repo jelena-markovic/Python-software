@@ -25,6 +25,9 @@ from selection.api import (randomization,
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
 import pandas as pd
+import sys
+import os
+
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive'])
@@ -32,8 +35,8 @@ import pandas as pd
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
 def test_marginalize(s=0,
-                    n=600,
-                    p=200,
+                    n=100,
+                    p=20,
                     rho=0.,
                     signal=3.5,
                     lam_frac = 2.5,
@@ -42,7 +45,7 @@ def test_marginalize(s=0,
                     loss='gaussian',
                     randomizer = 'gaussian',
                     randomizer_scale = 1.,
-                    nviews=3,
+                    nviews=1,
                     scalings=False,
                     subgrad =True,
                     parametric=False,
@@ -169,7 +172,7 @@ def test_marginalize(s=0,
 
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
 
-def report(niter=1, **kwargs):
+def report(niter, outfile, **kwargs):
 
     condition_report = reports.reports['test_marginalize']
     runs = reports.collect_multiple_runs(condition_report['test'],
@@ -177,15 +180,22 @@ def report(niter=1, **kwargs):
                                          niter,
                                          reports.summarize_all,
                                          **kwargs)
-
-    runs.to_pickle("marginalize_subgrad.pkl")
-    results = pd.read_pickle("lee_et_al_pivots.pkl")
-
-    fig = reports.pivot_plot_plus_naive(results)
-    #fig = reports.pivot_plot_2in1(runs,color='b', label='marginalized subgradient')
-    fig.suptitle('Randomized Lasso marginalized subgradient')
-    fig.savefig('marginalized_subgrad_pivots.pdf')
+    if outfile is None:
+        outfile = "marginalize_subgrad.pkl"
+    runs.to_pickle(outfile)
+    
+    #results = pd.read_pickle(outfile)
+    #fig = reports.pivot_plot_plus_naive(results)
+    #fig.suptitle('Randomized Lasso marginalized subgradient')
+    #fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
 if __name__ == '__main__':
-    report()
+    cluster = True
+    if cluster==True:
+        seedn = int(sys.argv[1])
+        outdir = sys.argv[2]
+        outfile = os.path.join(outdir, "list_result_" + str(seedn) + ".pkl")
+    else:
+        outfile=None
+    report(niter=1, outfile=outfile)
