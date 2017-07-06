@@ -112,7 +112,7 @@ class M_estimator(query):
         self.active_directions_list = active_directions_list ## added for group lasso
         self._active_directions = np.array(active_directions).T
         self._active_groups = np.array(active_groups, np.bool)
-        print("active groups", self._active_groups)
+        #print("active groups", self._active_groups)
         self._unpenalized_groups = np.array(unpenalized_groups, np.bool)
 
         self.selection_variable = {'groups':self._active_groups, 
@@ -324,7 +324,6 @@ class M_estimator(query):
 
 
 
-
     def setup_sampler(self, scaling=1, solve_args={'min_its':20, 'tol':1.e-10}):
         pass
 
@@ -471,7 +470,7 @@ class M_estimator(query):
         self.num_opt_var = new_linear.shape[1]
 
 
-    def construct_weights(self, full_state):
+    def construct_weights_groups(self, full_state):
         """
             marginalizing over the inactive sub-gradients for group Lasso
         """
@@ -507,7 +506,7 @@ class M_estimator(query):
             return query.construct_weights(self, full_state)
 
 
-    def construct_weights_lasso(self, full_state):
+    def construct_weights(self, full_state):
         """
             marginalizing over the sub-gradient
         """
@@ -516,7 +515,7 @@ class M_estimator(query):
             raise ValueError('setup_sampler should be called before using this function')
 
         if self._marginalize_subgradient:
-            p = self.p
+            p = self.ndim
             weights = np.zeros(p)
 
             if self.inactive_marginal_groups.sum()>0:
@@ -618,3 +617,18 @@ class M_estimator_split(M_estimator):
                                                 first_moment)
 
         self.randomization.set_covariance(cov)
+
+
+class M_estimator_epsilon_seq(M_estimator):
+
+    def __init__(self, loss, epsilon_seq, penalty, randomization, solve_args={'min_its': 50, 'tol': 1.e-10}):
+
+        self.epsilon_seq = epsilon_seq
+        M_estimator.__init__(self, loss, 0, penalty, self.randomization, solve_args=solve_args)
+
+    #def solve(self):
+    #    M_estimator.solve()
+    #    if len(active_directions) == 0:
+    #        _opt_hessian = 0
+    #    else:
+    #        _opt_hessian = (_hessian + epsilon * np.identity(p)).dot(active_directions)

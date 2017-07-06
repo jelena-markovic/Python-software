@@ -86,8 +86,8 @@ def test_gamsel(s=0,
 
     epsilon = 1. / np.sqrt(n)
     psi_seq_extended = np.concatenate([np.ones(degrees)*psi_seq[i] for i in range(p)])
-    ridge_penalty_weights = epsilon * np.ones(p_joint) + np.concatenate((np.zeros(p+1), psi_seq_extended))
-    print(ridge_penalty_weights.shape[0])
+    epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate((np.zeros(p+1), psi_seq_extended)) # ridge_penalty_weights
+
 
     groups = np.arange(p+1)
     weights = dict(zip(groups, np.ones(p+1) * lam * gamma))
@@ -105,9 +105,9 @@ def test_gamsel(s=0,
     views = []
     for i in range(nviews):
         if parametric==False:
-            views.append(glm_group_lasso(loss, epsilon, penalty, randomizer))
+            views.append(glm_group_lasso(loss, epsilon_seq, penalty, randomizer))
         else:
-            views.append(glm_group_lasso_parametric(loss, epsilon, penalty, randomizer))
+            views.append(glm_group_lasso_parametric(loss, epsilon_seq, penalty, randomizer))
 
     queries = multiple_queries(views)
     queries.solve()

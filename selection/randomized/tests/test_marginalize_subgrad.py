@@ -25,6 +25,7 @@ from selection.api import (randomization,
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
+import pandas as pd
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive'])
@@ -168,6 +169,7 @@ def test_marginalize(s=0,
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
+
 
 def report(niter=50, **kwargs):
 
