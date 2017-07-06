@@ -23,8 +23,8 @@ from selection.api import (randomization,
                            glm_target)
 
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
-
 from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
+import pandas as pd
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive'])
@@ -169,7 +169,7 @@ def test_marginalize(s=0,
 
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
 
-def report(niter=50, **kwargs):
+def report(niter=1, **kwargs):
 
     condition_report = reports.reports['test_marginalize']
     runs = reports.collect_multiple_runs(condition_report['test'],
@@ -178,7 +178,10 @@ def report(niter=50, **kwargs):
                                          reports.summarize_all,
                                          **kwargs)
 
-    fig = reports.pivot_plot_plus_naive(runs)
+    runs.to_pickle("marginalize_subgrad.pkl")
+    results = pd.read_pickle("lee_et_al_pivots.pkl")
+
+    fig = reports.pivot_plot_plus_naive(results)
     #fig = reports.pivot_plot_2in1(runs,color='b', label='marginalized subgradient')
     fig.suptitle('Randomized Lasso marginalized subgradient')
     fig.savefig('marginalized_subgrad_pivots.pdf')

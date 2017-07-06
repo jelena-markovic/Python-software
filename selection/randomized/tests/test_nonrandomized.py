@@ -76,11 +76,8 @@ def test_nonrandomized(s=0,
                 ci_length[j] = U[j] - L[j]
             return covered, ci_length
         covered = coverage(ci)[0]
-        #print(pivots)
-        #print(coverage)
 
         return pivots, covered
-
 
 
 def report(niter=50, **kwargs):
@@ -92,6 +89,7 @@ def report(niter=50, **kwargs):
                                                      niter,
                                                      reports.summarize_all,
                                                      **kwargs)
+
 
     fig = reports.pivot_plot_simple(screened_results)
     fig.savefig('nonrandomized_pivots.pdf') # will have both bootstrap and CLT on plot
