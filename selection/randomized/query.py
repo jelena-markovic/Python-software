@@ -544,7 +544,9 @@ class targeted_sampler(object):
         '''
 
         if stepsize is None:
-            stepsize = 1. / self.crude_lipschitz()
+            #stepsize = 1. / self.crude_lipschitz()
+            print("step size 1 over", self.observed_state.shape[0])
+            stepsize = 1./ self.observed_state.shape[0]
 
         if keep_opt:
             keep_slice = slice(None, None, None)
@@ -760,10 +762,12 @@ class targeted_sampler(object):
         lipschitz : float
 
         """
+        print("lipz")
         lipschitz = np.linalg.svd(self.target_inv_cov)[1].max()
         for transform, objective in zip(self.target_transform, self.objectives):
             lipschitz += np.linalg.svd(transform[0])[1].max()**2 * objective.randomization.lipschitz
             lipschitz += np.linalg.svd(objective.score_transform[0])[1].max()**2 * objective.randomization.lipschitz
+        print("lipz")
         return lipschitz
 
 

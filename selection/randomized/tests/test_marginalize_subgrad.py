@@ -35,11 +35,11 @@ import os
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
 def test_marginalize(s=0,
-                    n=100,
-                    p=20,
+                    n=2000,
+                    p=20000,
                     rho=0.,
                     signal=3.5,
-                    lam_frac = 2.5,
+                    lam_frac = 5.,
                     ndraw=10000,
                     burnin=2000,
                     loss='gaussian',
@@ -48,7 +48,7 @@ def test_marginalize(s=0,
                     nviews=1,
                     scalings=False,
                     subgrad =True,
-                    parametric=False,
+                    parametric=True,
                     intervals='old'):
     print(n,p,s)
 
@@ -61,7 +61,7 @@ def test_marginalize(s=0,
 
     if loss=="gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1)
-        lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
+        lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
         loss = rr.glm.gaussian(X, y)
     elif loss=="logistic":
         X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal)
@@ -70,7 +70,7 @@ def test_marginalize(s=0,
 
     epsilon = 1. / np.sqrt(n)
 
-    W = lam_frac*np.ones(p)*lam
+    W = np.ones(p)*lam
     #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p),
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
@@ -107,10 +107,6 @@ def test_marginalize(s=0,
                 views[i].condition_on_scalings()
         if subgrad:
             for i in range(nviews):
-               conditioning_groups = np.zeros(p,dtype=bool)
-               conditioning_groups[:(p/2)] = True
-               marginalizing_groups = np.zeros(p, dtype=bool)
-               marginalizing_groups[(p/2):] = True
                views[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
@@ -183,7 +179,7 @@ def report(niter, outfile, **kwargs):
     if outfile is None:
         outfile = "marginalize_subgrad.pkl"
     runs.to_pickle(outfile)
-    
+
     #results = pd.read_pickle(outfile)
     #fig = reports.pivot_plot_plus_naive(results)
     #fig.suptitle('Randomized Lasso marginalized subgradient')
