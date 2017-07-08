@@ -624,11 +624,27 @@ class M_estimator_epsilon_seq(M_estimator):
     def __init__(self, loss, epsilon_seq, penalty, randomization, solve_args={'min_its': 50, 'tol': 1.e-10}):
 
         self.epsilon_seq = epsilon_seq
-        M_estimator.__init__(self, loss, 0, penalty, self.randomization, solve_args=solve_args)
+        M_estimator.__init__(self, loss, 0, penalty, randomization, solve_args=solve_args)
 
-    #def solve(self):
-    #    M_estimator.solve()
-    #    if len(active_directions) == 0:
-    #        _opt_hessian = 0
-    #    else:
-    #        _opt_hessian = (_hessian + epsilon * np.identity(p)).dot(active_directions)
+
+    def solve(self):
+        M_estimator.solve(self)
+        (_opt_linear_term, _opt_affine_term) = self.opt_transform
+
+        if len(self._active_directions)>0:
+            _opt_linear_term[:,self.scaling_slice] += np.diag(self.epsilon_seq).dot(self._active_directions)
+
+        if self._unpenalized.sum()>0:
+            unpenalized_directions = np.identity(self.ndim)[:, self._unpenalized]
+            _opt_linear_term[:, self.unpenalized_slice] += np.diag(self.epsilon_seq).dot(unpenalized_directions)
+
+        active = np.zeros(self.loss.shape, np.bool)
+        groups = np.unique(self.penalty.groups)
+        for i, g in enumerate(groups):
+            group = self.penalty.groups == g
+            if self._active_groups[i]:
+                active[group] = True
+
+        self.Q += (np.diag(self.epsilon_seq))[:, active][active, :]
+        self.Qinv = np.linalg.inv(self.Q)
+        self.form_VQLambda()

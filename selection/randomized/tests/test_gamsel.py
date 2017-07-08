@@ -15,6 +15,7 @@ import selection.tests.reports as reports
 
 from selection.api import (randomization,
                            glm_group_lasso,
+                           glm_group_lasso_epsilon_seq,
                            pairs_bootstrap_glm,
                            multiple_queries,
                            discrete_family,
@@ -105,7 +106,7 @@ def test_gamsel(s=0,
     views = []
     for i in range(nviews):
         if parametric==False:
-            views.append(glm_group_lasso(loss, epsilon_seq, penalty, randomizer))
+            views.append(glm_group_lasso_epsilon_seq(loss, epsilon_seq, penalty, randomizer))
         else:
             views.append(glm_group_lasso_parametric(loss, epsilon_seq, penalty, randomizer))
 
