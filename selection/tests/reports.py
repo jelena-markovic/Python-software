@@ -49,6 +49,7 @@ def collect_multiple_runs(test_fn, columns, nrun, summary_fn, *args, **kwargs):
             summary_fn(pd.concat(dfs))
     return pd.concat(dfs)
 
+
 def pvalue_plot(multiple_results, screening=False, fig=None, label = '$H_0$', colors=['b','r']):
     """
     Extract pvalues and group by 

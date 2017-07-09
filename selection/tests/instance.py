@@ -21,15 +21,13 @@ from scipy.stats import t as tdist
 
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
                       random_signs=False, df=np.inf,
-                      scale=True, center=True,
-                      equi_correlated=True):
+                      scale=True, center=True):
 
 
     """
     A testing instance for the LASSO.
     If equi_correlated is True design is equi-correlated in the population,
     normalized to have columns of norm 1.
-    If equi_correlated is False design is auto-regressive.
     For the default settings, a $\lambda$ of around 13.5
     corresponds to the theoretical $E(\|X^T\epsilon\|_{\infty})$
     with $\epsilon \sim N(0, \sigma^2 I)$.
@@ -55,10 +53,6 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
 
     df : int
         Degrees of freedom for noise (from T distribution).
-
-    equi_correlated: bool
-        If true, design in equi-correlated,
-        Else design is AR.
 
     Returns
     -------

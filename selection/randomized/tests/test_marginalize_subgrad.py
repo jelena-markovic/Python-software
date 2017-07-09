@@ -3,7 +3,7 @@ import numpy as np
 
 import regreg.api as rr
 import selection.tests.reports as reports
-
+import timeit
 
 from selection.tests.flags import SET_SEED, SMALL_SAMPLES
 from selection.tests.instance import logistic_instance, gaussian_instance
@@ -35,16 +35,16 @@ import os
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
 def test_marginalize(s=0,
-                    n=2000,
-                    p=20000,
+                    n=4000,
+                    p=80000,
                     rho=0.,
                     signal=3.5,
-                    lam_frac = 5.,
+                    lam_frac = 6.5,
                     ndraw=10000,
                     burnin=2000,
                     loss='gaussian',
                     randomizer = 'gaussian',
-                    randomizer_scale = 1.,
+                    randomizer_scale = 1.5,
                     nviews=1,
                     scalings=False,
                     subgrad =True,
@@ -110,13 +110,17 @@ def test_marginalize(s=0,
                views[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
+        print("target setup")
+        start = timeit.default_timer()
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      queries,
                                                      bootstrap=False,
                                                      parametric=parametric)
                                                      #reference= beta[active_union])
-
+        stop = timeit.default_timer()
+        print("setup time", stop-start)
+        print("starting sampler")
         if intervals=='old':
             target_sample = target_sampler.sample(ndraw=ndraw,
                                                   burnin=burnin)

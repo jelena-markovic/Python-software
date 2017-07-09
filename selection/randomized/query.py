@@ -545,7 +545,7 @@ class targeted_sampler(object):
 
         if stepsize is None:
             #stepsize = 1. / self.crude_lipschitz()
-            print("step size 1 over", self.observed_state.shape[0])
+            print("1 over the length of the observed", self.observed_state.shape[0])
             stepsize = 1./ self.observed_state.shape[0]
 
         if keep_opt:
@@ -762,12 +762,14 @@ class targeted_sampler(object):
         lipschitz : float
 
         """
-        print("lipz")
-        lipschitz = np.linalg.svd(self.target_inv_cov)[1].max()
+        lipschitz = np.linalg.svd(self.target_inv_cov)[1].max() # dim |E|\times |E|
+
         for transform, objective in zip(self.target_transform, self.objectives):
             lipschitz += np.linalg.svd(transform[0])[1].max()**2 * objective.randomization.lipschitz
-            lipschitz += np.linalg.svd(objective.score_transform[0])[1].max()**2 * objective.randomization.lipschitz
-        print("lipz")
+            # objective.score_transform[0] is p\times p
+            #print(objective.score_transform[0].shape)
+            #lipschitz += np.linalg.svd(objective.score_transform[0])[1].max()**2 * objective.randomization.lipschitz
+            print("lipz finished, step equals", lipschitz)
         return lipschitz
 
 

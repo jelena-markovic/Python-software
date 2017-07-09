@@ -6,7 +6,7 @@ import selection.tests.reports as reports
 
 
 from selection.tests.flags import SET_SEED, SMALL_SAMPLES
-from selection.tests.instance import logistic_instance, gaussian_instance
+from selection.tests.instance import logistic_instance, gaussian_instance, AR_instance
 from selection.tests.decorators import (wait_for_return_value,
                                         set_seed_iftrue,
                                         set_sampling_params_iftrue,
@@ -21,20 +21,22 @@ from selection.api import (randomization,
 from statsmodels.sandbox.stats.multicomp import multipletests
 from selection.randomized.cv_view import CV_view
 
+import pandas as pd
+import sys
+import os
 
 @register_report(['pvalue', 'active_var'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_power(s=30,
-               n=2000,
-               p=1000,
-               rho=0.6,
-               equi_correlated=False,
+def test_power(s=0,
+               n=100,
+               p=20,
+               rho=0.,
                signal=3.5,
-               lam_frac = 1.,
-               cross_validation = True,
-               condition_on_CVR=True,
+               lam_frac = 6.,
+               cross_validation = False,
+               condition_on_CVR=False,
                randomizer = 'gaussian',
                randomizer_scale = 1.,
                ndraw=10000,
@@ -46,12 +48,11 @@ def test_power(s=30,
 
     print(n,p,s)
     if loss=="gaussian":
-        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1.,
-                                                       equi_correlated=equi_correlated)
+        X, y, beta, nonzero, sigma = AR_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1.)
         lam = np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma
         glm_loss = rr.glm.gaussian(X, y)
     elif loss=="logistic":
-        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal, equi_correlated=equi_correlated)
+        X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal)
         glm_loss = rr.glm.logistic(X, y)
         lam = np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
 
@@ -130,7 +131,7 @@ def test_power(s=30,
         pvalues = target_sampler.coefficient_pvalues(target_observed,
                                                      parameter=np.zeros_like(target_observed),
                                                      sample=target_sample)
-        return pvalues, active_var, s
+        return pvalues, active_var
 
 
 def BH(pvalues, active_var, s, q=0.2):
@@ -156,27 +157,31 @@ def simple_rejections(pvalues, active_var, s, alpha=0.05):
     return FP, FDP, power, total_rejections, false_rejections, nactive, survived
 
 
-def report(niter=50, **kwargs):
-    np.random.seed(500)
+def report(niter, outfile, **kwargs):
     condition_report = reports.reports['test_power']
     runs = reports.collect_multiple_runs(condition_report['test'],
                                          condition_report['columns'],
                                          niter,
                                          reports.summarize_all,
                                          **kwargs)
+    if outfile is None:
+        outfile = "power.pkl"
+    runs.to_pickle(outfile)
+    results = pd.read_pickle(outfile)
+    compute_power(results, s=kwargs['s'])
+    #fig = reports.pivot_plot_simple(runs)
+    #fig.savefig('marginalized_subgrad_pivots.pdf')
 
-    fig = reports.pivot_plot_simple(runs)
-    fig.savefig('marginalized_subgrad_pivots.pdf')
 
-
-def compute_power(**kwargs):
+def compute_power(runs, s):
     BH_sample, simple_rejections_sample = [], []
-    niter = 50
-    for i in range(niter):
-        print("iteration", i)
-        result = test_power(**kwargs)[1]
-        if result is not None:
-            pvalues, active_var, s = result
+    print(runs)
+    for i in range(1):
+        one_run = runs[[{'run':i}]]
+        pvalues = one_run['pvalue']
+        active_var = one_run['active_vars']
+
+        if pvalues is not None:
             BH_sample.append(BH(pvalues, active_var,s))
             simple_rejections_sample.append(simple_rejections(pvalues, active_var,s))
 
@@ -197,19 +202,27 @@ def compute_power(**kwargs):
 
 
 if __name__ == '__main__':
-    np.random.seed(500)
-    kwargs = {'s':30, 'n':2000, 'p':1000, 'rho':0.6,
-              'equi_correlated':False,
-              'signal':3.5,
-              'lam_frac':1.,
-              'cross_validation':True,
-              'condition_on_CVR':True,
-              'randomizer':'gaussian',
-              'randomizer_scale':1.,
-              'ndraw':10000,
-              'burnin':2000,
-              'loss':'gaussian',
-              'scalings':False,
-              'subgrad':True,
-              'parametric':True}
-    compute_power(**kwargs)
+
+    cluster = True
+    if cluster == True:
+        seedn = int(sys.argv[1])
+        outdir = sys.argv[2]
+        outfile = os.path.join(outdir, "list_result_" + str(seedn) + ".pkl")
+    else:
+        outfile = None
+    report(niter=1, outfile=outfile)
+
+    #kwargs = {'s':30, 'n':2000, 'p':1000, 'rho':0.6,
+    #          'signal':3.5,
+    #          'lam_frac':1.,
+    #          'cross_validation':True,
+    #          'condition_on_CVR':True,
+    #          'randomizer':'gaussian',
+    #          'randomizer_scale':1.,
+    #          'ndraw':10000,
+    #          'burnin':2000,
+    #          'loss':'gaussian',
+    #          'scalings':False,
+    #          'subgrad':True,
+    #          'parametric':True}
+    #compute_power(niter=1, **kwargs)
