@@ -25,16 +25,16 @@ import pandas as pd
 import sys
 import os
 
-@register_report(['pvalue', 'active_var'])
+@register_report(['pvalue', 'active_var', 's'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_power(s=0,
+def test_power(s=5,
                n=100,
                p=20,
                rho=0.,
                signal=3.5,
-               lam_frac = 6.,
+               lam_frac = 2.,
                cross_validation = False,
                condition_on_CVR=False,
                randomizer = 'gaussian',
@@ -131,17 +131,21 @@ def test_power(s=0,
         pvalues = target_sampler.coefficient_pvalues(target_observed,
                                                      parameter=np.zeros_like(target_observed),
                                                      sample=target_sample)
-        return pvalues, active_var
+        return pvalues, active_var, s*np.ones(nactive)
 
 
 def BH(pvalues, active_var, s, q=0.2):
+
     decisions = multipletests(pvalues, alpha=q, method="fdr_bh")[0]
+    print(decisions)
+    print(active_var)
     TP = decisions[active_var].sum()
     FDP = np.true_divide(decisions.sum() - TP, max(decisions.sum(), 1))
     power = np.true_divide(TP, s)
     total_rejections = decisions.sum()
     false_rejections = total_rejections - TP
     return FDP, power, total_rejections, false_rejections
+
 
 def simple_rejections(pvalues, active_var, s, alpha=0.05):
     decisions = (pvalues < alpha)
@@ -168,49 +172,56 @@ def report(niter, outfile, **kwargs):
         outfile = "power.pkl"
     runs.to_pickle(outfile)
     results = pd.read_pickle(outfile)
-    compute_power(results, s=kwargs['s'])
-    #fig = reports.pivot_plot_simple(runs)
+
+    compute_power(results)
+
+        #fig = reports.pivot_plot_simple(runs)
     #fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
-def compute_power(runs, s):
+def compute_power(runs):
     BH_sample, simple_rejections_sample = [], []
-    print(runs)
-    for i in range(1):
-        one_run = runs[[{'run':i}]]
-        pvalues = one_run['pvalue']
-        active_var = one_run['active_vars']
-
+    niter = len(set(runs['run']))
+    s = np.mean(runs['s'])
+    print('sparsity', s)
+    for i in range(niter):
+        #one_run = runs[[{'run':i}]]
+        one_run = runs[runs['run']==i]
+        print(one_run)
+        pvalues = np.array(one_run['pvalue'])
+        active_var = np.array(one_run['active_var'])
+        print(pvalues)
+        print(active_var)
         if pvalues is not None:
-            BH_sample.append(BH(pvalues, active_var,s))
+            BH_sample.append(BH(pvalues, active_var, s))
             simple_rejections_sample.append(simple_rejections(pvalues, active_var,s))
 
-        print("FDP BH mean", np.mean([i[0] for i in BH_sample]))
-        print("power BH mean", np.mean([i[1] for i in BH_sample]))
-        print("total rejections BH", np.mean([i[2] for i in BH_sample]))
-        print("false rejections BH ", np.mean([i[3] for i in BH_sample]))
+    print("FDP BH mean", np.mean([i[0] for i in BH_sample]))
+    print("power BH mean", np.mean([i[1] for i in BH_sample]))
+    print("total rejections BH", np.mean([i[2] for i in BH_sample]))
+    print("false rejections BH ", np.mean([i[3] for i in BH_sample]))
 
-        print("FP level mean", np.mean([i[0] for i in simple_rejections_sample]))
-        print("FDP level mean", np.mean([i[1] for i in simple_rejections_sample]))
-        print("power level mean", np.mean([i[2] for i in simple_rejections_sample]))
-        print("total rejections level", np.mean([i[3] for i in simple_rejections_sample]))
-        print("false rejections level", np.mean([i[4] for i in simple_rejections_sample]))
-        print("nactive mean", np.mean([i[5] for i in simple_rejections_sample]))
-        print("true variables that survived the second round", np.mean([i[6] for i in simple_rejections_sample]))
+    print("FP level mean", np.mean([i[0] for i in simple_rejections_sample]))
+    print("FDP level mean", np.mean([i[1] for i in simple_rejections_sample]))
+    print("power level mean", np.mean([i[2] for i in simple_rejections_sample]))
+    print("total rejections level", np.mean([i[3] for i in simple_rejections_sample]))
+    print("false rejections level", np.mean([i[4] for i in simple_rejections_sample]))
+    print("nactive mean", np.mean([i[5] for i in simple_rejections_sample]))
+    print("true variables that survived the second round", np.mean([i[6] for i in simple_rejections_sample]))
 
     return None
 
 
 if __name__ == '__main__':
 
-    cluster = True
+    cluster = False
     if cluster == True:
         seedn = int(sys.argv[1])
         outdir = sys.argv[2]
         outfile = os.path.join(outdir, "list_result_" + str(seedn) + ".pkl")
     else:
         outfile = None
-    report(niter=1, outfile=outfile)
+    report(niter=2, outfile=outfile)
 
     #kwargs = {'s':30, 'n':2000, 'p':1000, 'rho':0.6,
     #          'signal':3.5,

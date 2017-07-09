@@ -464,6 +464,13 @@ def compute_power(multiple_results):
     return result
 
 
+def save_sparsity(multiple_results):
+    result={}
+    if 's' in multiple_results.columns:
+        result['s'] = np.mean(multiple_results['s'])
+    return result
+
+
 def compute_screening(multiple_results):
     return {'screening:': 1. / np.mean(multiple_results.loc[multiple_results.index == 0,'count'])}
 
@@ -479,6 +486,7 @@ def summarize_all(multiple_results):
     result.update(compute_FDP(multiple_results))
     result.update(compute_power(multiple_results))
     result.update(compute_naive_pivots(multiple_results))
+    result.update(save_sparsity(multiple_results))
     for i in result:
         print(i, result[i])
 
