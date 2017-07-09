@@ -35,11 +35,11 @@ from selection.randomized.glm import glm_parametric_covariance, glm_nonparametri
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
 def test_gamsel(s=0,
-                n=100,
+                n=300,
                 p=10,
                 rho=0.,
                 signal=3.5,
-                lam_frac = 2.,
+                lam_frac = 2.5,
                 ndraw=10000,
                 burnin=2000,
                 loss='gaussian',
@@ -54,7 +54,7 @@ def test_gamsel(s=0,
     print(n,p,s)
 
     if loss=="gaussian":
-        degrees = 3
+        degrees = 2
         df = 4
         gamma = 0.5
 
