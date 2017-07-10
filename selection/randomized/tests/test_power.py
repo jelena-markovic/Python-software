@@ -137,8 +137,6 @@ def test_power(s=5,
 def BH(pvalues, active_var, s, q=0.2):
 
     decisions = multipletests(pvalues, alpha=q, method="fdr_bh")[0]
-    print(decisions)
-    print(active_var)
     TP = decisions[active_var].sum()
     FDP = np.true_divide(decisions.sum() - TP, max(decisions.sum(), 1))
     power = np.true_divide(TP, s)
@@ -168,14 +166,17 @@ def report(niter, outfile, **kwargs):
                                          niter,
                                          reports.summarize_all,
                                          **kwargs)
+    print_power = False
     if outfile is None:
         outfile = "power.pkl"
+        print_power = True
     runs.to_pickle(outfile)
     results = pd.read_pickle(outfile)
 
-    compute_power(results)
+    if print_power:
+        compute_power(results)
 
-        #fig = reports.pivot_plot_simple(runs)
+    #fig = reports.pivot_plot_simple(runs)
     #fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
@@ -183,15 +184,10 @@ def compute_power(runs):
     BH_sample, simple_rejections_sample = [], []
     niter = len(set(runs['run']))
     s = np.mean(runs['s'])
-    print('sparsity', s)
     for i in range(niter):
-        #one_run = runs[[{'run':i}]]
         one_run = runs[runs['run']==i]
-        print(one_run)
         pvalues = np.array(one_run['pvalue'])
         active_var = np.array(one_run['active_var'])
-        print(pvalues)
-        print(active_var)
         if pvalues is not None:
             BH_sample.append(BH(pvalues, active_var, s))
             simple_rejections_sample.append(simple_rejections(pvalues, active_var,s))
@@ -221,19 +217,4 @@ if __name__ == '__main__':
         outfile = os.path.join(outdir, "list_result_" + str(seedn) + ".pkl")
     else:
         outfile = None
-    report(niter=2, outfile=outfile)
-
-    #kwargs = {'s':30, 'n':2000, 'p':1000, 'rho':0.6,
-    #          'signal':3.5,
-    #          'lam_frac':1.,
-    #          'cross_validation':True,
-    #          'condition_on_CVR':True,
-    #          'randomizer':'gaussian',
-    #          'randomizer_scale':1.,
-    #          'ndraw':10000,
-    #          'burnin':2000,
-    #          'loss':'gaussian',
-    #          'scalings':False,
-    #          'subgrad':True,
-    #          'parametric':True}
-    #compute_power(niter=1, **kwargs)
+    report(niter=10, outfile=outfile)
