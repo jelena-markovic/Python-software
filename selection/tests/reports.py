@@ -271,9 +271,6 @@ def pivot_plot_plus_naive(multiple_results, coverage=True, color='b', label=None
 
 
 
-
-
-
 def pivot_plot(multiple_results, coverage=True, color='b', label=None, fig=None):
     """
     Extract pivots at truth and mle.
@@ -368,13 +365,14 @@ def compute_pivots(multiple_results):
     if 'pvalue' in multiple_results.columns:
         pivots = multiple_results['pvalue']
         return {'selective pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
-    return {}
-
-def compute_naive_pivots(multiple_results):
     if 'naive_pvalues' in multiple_results.columns:
         pivots = multiple_results['naive_pvalues']
         return {'naive pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    if 'split_pvalues' in multiple_results.columns:
+        pivots = multiple_results['split_pvalues']
+        return {'split pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
     return {}
+
 
 def boot_clt_pivots(multiple_results):
     pivot_summary = {}

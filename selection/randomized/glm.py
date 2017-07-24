@@ -402,7 +402,7 @@ class fixedX_group_lasso(M_estimator):
 
 # Methods to form appropriate covariances
 
-def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
+def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsample=2000):
     """
     m out of n bootstrap
 
@@ -427,7 +427,9 @@ def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
         _outer_target += np.multiply.outer(_boot_target, _boot_target)
 
         for i, _boot in enumerate(cross_terms):
-            _boot_sample = _boot(indices)
+            cross_sampler = cross_samplers[i]
+            cross_indices = cross_sampler()
+            _boot_sample = _boot(cross_indices)
             _mean_cross[i] += _boot_sample
             _outer_cross[i] += np.multiply.outer(_boot_target, _boot_sample)
 
@@ -442,6 +444,7 @@ def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
     if len(cross_terms) == 0:
         return _cov_target
     return [_cov_target] + [_o - np.multiply.outer(_mean_target, _m) for _m, _o in zip(_mean_cross, _outer_cross)]
+
 
 def glm_nonparametric_bootstrap(m, n):
     """

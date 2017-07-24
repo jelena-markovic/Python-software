@@ -21,9 +21,7 @@ from scipy.stats import t as tdist
 
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
                       random_signs=False, df=np.inf,
-                      scale=True, center=True,
-                      equi_correlated=True):
-
+                      scale=True, center=True):
 
     """
     A testing instance for the LASSO.
@@ -78,8 +76,8 @@ def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
     sigma : float
         Noise level.
     """
-    X=design(n,p, rho, equi_correlated)
-
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+                  np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
     if center:
         X -= X.mean(0)[None, :]
@@ -160,7 +158,7 @@ def AR_instance(n=2000, p=2500, s=30, sigma=2, rho=0.25, signal=4.5):
 
 def logistic_instance(n=100, p=200, s=7, rho=0.3, signal=14,
                       random_signs=False, 
-                      scale=True, center=True, equi_correlated=True):
+                      scale=True, center=True):
     """
     A testing instance for the LASSO.
     Design is equi-correlated in the population,
@@ -205,7 +203,8 @@ def logistic_instance(n=100, p=200, s=7, rho=0.3, signal=14,
 
     """
 
-    X= design(n,p, rho, equi_correlated)
+    X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
+         np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 
     if center:
         X -= X.mean(0)[None,:]
