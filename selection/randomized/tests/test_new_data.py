@@ -20,6 +20,7 @@ from selection.api import (randomization,
                            glm_target,
                            glm_group_lasso_parametric)
 
+from selection.randomized.glm import glm_group_lasso_new_data
 from selection.randomized.query import (naive_confidence_intervals, naive_pvalues)
 
 from selection.randomized.glm import standard_ci
@@ -73,6 +74,7 @@ def test_new_data(s=0,
     W = np.ones(p)*lam
     #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p), weights=dict(zip(np.arange(p), W)), lagrange=1.)
+    #M_est = glm_group_lasso_new_data(loss, loss1, epsilon, penalty, randomizer)
     M_est = glm_group_lasso(loss1, epsilon, penalty, randomizer)
     M_est.solve()
     views = [M_est]
@@ -104,11 +106,19 @@ def test_new_data(s=0,
         if subgrad:
             M_est.decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
+        def sampler1():
+            indices = np.random.choice(2*n, size=(2*n,), replace=True)
+            return (indices, indices[:n])
+        def sampler2():
+            indices1 = np.random.choice(n, size=(n,), replace=True)
+            indices2 = n+np.random.choice(n, size=(n,), replace=True)
+            return (np.concatenate((indices1, indices2),axis=0), indices1)
 
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      queries,
-                                                     bootstrap=False)
+                                                     sampler = sampler2,
+                                                     bootstrap = False)
 
         target_sample = target_sampler.sample(ndraw=ndraw,
                                               burnin=burnin)

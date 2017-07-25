@@ -402,10 +402,7 @@ class targeted_sampler(object):
         self.score_cov = []
         for i in range(self.nqueries):
             if parametric == False:
-                p = multi_view.objectives[i].ndim
-                cross_samplers= [lambda: np.random.choice(p, size=(p,), replace=True)]
                 target_cov, cross_cov = multi_view.form_covariances(target_info,
-                                  cross_samplers = cross_samplers,
                                   cross_terms=[multi_view.score_info[i]],
                                   nsample=multi_view.nboot[i])
             else:

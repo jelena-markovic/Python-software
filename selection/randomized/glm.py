@@ -215,6 +215,7 @@ def pairs_inactive_score_glm(glm_loss, active, beta_active, scaling=1.):
 def target(loss, 
            active, 
            queries,
+           sampler,
            subset=None, 
            bootstrap=False,
            solve_args={'min_its':50, 'tol':1.e-10},
@@ -291,7 +292,7 @@ def target(loss,
     target_observed = _subsetter(boot_target_observed)
 
     if parametric==False:
-        form_covariances = glm_nonparametric_bootstrap(n, n)
+        form_covariances = glm_nonparametric_bootstrap(sampler)
     else:
         form_covariances = glm_parametric_covariance(loss)
 
@@ -335,6 +336,24 @@ class glm_group_lasso(M_estimator):
                                               inactive=~self.selection_variable['variables'])[0]
 
         return bootstrap_score
+
+class glm_group_lasso_new_data(M_estimator):
+
+    def __init__(self, new_loss, loss, epsilon, penalty, randomization, solve_args={'min_its':50, 'tol':1.e-10}):
+        M_estimator.__init__(self, loss, epsilon, penalty, randomization, solve_args={'min_its':50, 'tol':1.e-10})
+        self.new_loss = new_loss
+
+    def setup_sampler(self, scaling=1., solve_args={'min_its':50, 'tol':1.e-10}):
+        M_estimator.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+
+        bootstrap_score = pairs_bootstrap_glm(self.new_loss,
+                                              self.selection_variable['variables'],
+                                              beta_full=self._beta_full,
+                                              inactive=~self.selection_variable['variables'])[0]
+
+        return bootstrap_score
+
+
 
 class split_glm_group_lasso(M_estimator_split):
 
@@ -402,13 +421,12 @@ class fixedX_group_lasso(M_estimator):
 
 # Methods to form appropriate covariances
 
-def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsample=2000):
+def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
     """
     m out of n bootstrap
     returns estimates of covariance matrices: boot_target with itself,
     and the blocks of (boot_target, boot_other) for other in cross_terms
     """
-
     _mean_target = 0.
     if len(cross_terms) > 0:
         _mean_cross = [0.] * len(cross_terms)
@@ -418,15 +436,15 @@ def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsamp
     for j in range(nsample):
         #if j % 100==0:
         #    print(j)
-        indices = sampler()
+        indices_list = sampler()
+        indices = indices_list[0]
         _boot_target = boot_target(indices)
 
         _mean_target += _boot_target
         _outer_target += np.multiply.outer(_boot_target, _boot_target)
 
         for i, _boot in enumerate(cross_terms):
-            cross_sampler = cross_samplers[i]
-            cross_indices = indices[:(indices.shape[0])/2] #cross_sampler()
+            cross_indices = indices_list[i+1]
             _boot_sample = _boot(cross_indices)
             _mean_cross[i] += _boot_sample
             _outer_cross[i] += np.multiply.outer(_boot_target, _boot_sample)
@@ -444,14 +462,14 @@ def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsamp
     return [_cov_target] + [_o - np.multiply.outer(_mean_target, _m) for _m, _o in zip(_mean_cross, _outer_cross)]
 
 
-def glm_nonparametric_bootstrap(m, n):
+def glm_nonparametric_bootstrap(sampler):
     """
     The m out of n bootstrap.
     """
-    def sampler():
-        indices1 = np.random.choice(n/2, size=(n/2,), replace=True)
-        indices2 = n/2+np.random.choice(n / 2, size=(n / 2,), replace=True)
-        return(np.concatenate((indices1,indices2), axis=0))
+    #def sampler():
+    #    indices1 = np.random.choice(n/2, size=(n/2,), replace=True)
+    #    indices2 = n/2+np.random.choice(n / 2, size=(n / 2,), replace=True)
+    #    return(np.concatenate((indices1,indices2), axis=0))
 
     return functools.partial(bootstrap_cov, sampler)
 
@@ -549,9 +567,13 @@ def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
     boot_target, target_observed = pairs_bootstrap_glm(loss, active)
     nactive = np.sum(active)
     size = np.sum(leftout_indices)
+
     observed = target_observed[:nactive]
     boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
-    sampler = lambda: np.random.choice(size, size=(size,), replace=True)
+    def sampler():
+        indices = np.random.choice(size, size=(size,), replace=True)
+        return [indices]
+    #sampler = lambda: np.random.choice(size, size=(size,), replace=True)
     target_cov = bootstrap_cov(sampler, boot_target_restricted)
 
     from scipy.stats import norm as ndist
