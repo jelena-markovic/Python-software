@@ -425,13 +425,13 @@ def compute_lengths(multiple_results):
 
 def compute_length_frac(multiple_results):
     result = {}
-    if 'ci_length_clt' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_clt' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         clt = multiple_results['ci_length_clt']
         split = split[~np.isnan(clt)]
         clt = clt[~np.isnan(clt)]
         result['split/clt'] = np.median(np.divide(split, clt))
-    if 'ci_length_boot' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_boot' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         boot = multiple_results['ci_length_boot']
         split = split[~np.isnan(boot)]
@@ -475,7 +475,6 @@ def summarize_all(multiple_results):
     result.update(compute_length_frac(multiple_results))
     result.update(compute_FDP(multiple_results))
     result.update(compute_power(multiple_results))
-    result.update(compute_naive_pivots(multiple_results))
     for i in result:
         print(i, result[i])
 

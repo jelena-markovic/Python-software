@@ -405,10 +405,8 @@ class fixedX_group_lasso(M_estimator):
 def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsample=2000):
     """
     m out of n bootstrap
-
     returns estimates of covariance matrices: boot_target with itself,
     and the blocks of (boot_target, boot_other) for other in cross_terms
-
     """
 
     _mean_target = 0.
@@ -428,7 +426,7 @@ def bootstrap_cov(sampler, boot_target, cross_samplers=(), cross_terms=(), nsamp
 
         for i, _boot in enumerate(cross_terms):
             cross_sampler = cross_samplers[i]
-            cross_indices = cross_sampler()
+            cross_indices = indices[:(indices.shape[0])/2] #cross_sampler()
             _boot_sample = _boot(cross_indices)
             _mean_cross[i] += _boot_sample
             _outer_cross[i] += np.multiply.outer(_boot_target, _boot_sample)
@@ -450,7 +448,14 @@ def glm_nonparametric_bootstrap(m, n):
     """
     The m out of n bootstrap.
     """
-    return functools.partial(bootstrap_cov, lambda: np.random.choice(n, size=(m,), replace=True))
+    def sampler():
+        indices1 = np.random.choice(n/2, size=(n/2,), replace=True)
+        indices2 = n/2+np.random.choice(n / 2, size=(n / 2,), replace=True)
+        return(np.concatenate((indices1,indices2), axis=0))
+
+    return functools.partial(bootstrap_cov, sampler)
+
+    #return functools.partial(bootstrap_cov, lambda: np.random.choice(n, size=(m,), replace=True))
 
 def resid_bootstrap(gaussian_loss,
                     active,
@@ -540,12 +545,10 @@ def glm_parametric_covariance(glm_loss, solve_args={'min_its':50, 'tol':1.e-10})
 
 def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
 
-    import regreg.api as rr
-
     loss = glm_loss(X[leftout_indices, ], y[leftout_indices])
     boot_target, target_observed = pairs_bootstrap_glm(loss, active)
     nactive = np.sum(active)
-    size= np.sum(leftout_indices)
+    size = np.sum(leftout_indices)
     observed = target_observed[:nactive]
     boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
     sampler = lambda: np.random.choice(size, size=(size,), replace=True)
@@ -553,12 +556,15 @@ def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
 
     from scipy.stats import norm as ndist
     quantile = - ndist.ppf(alpha / float(2))
-    LU = np.zeros((2, target_observed.shape[0]))
+    LU = np.zeros((2, nactive))
+    pvalues = np.zeros(nactive)
     for j in range(observed.shape[0]):
         sigma = np.sqrt(target_cov[j, j])
         LU[0, j] = observed[j] - sigma * quantile
         LU[1, j] = observed[j] + sigma * quantile
-    return LU.T
+        pval = ndist.cdf(observed[j] / sigma)
+        pvalues[j] = 2 * min(pval, 1 - pval)
+    return LU.T, pvalues
 
 
 def standard_ci_sm(X, y, active, leftout_indices, alpha=0.1):

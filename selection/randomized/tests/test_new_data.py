@@ -22,7 +22,7 @@ from selection.api import (randomization,
 
 from selection.randomized.query import (naive_confidence_intervals, naive_pvalues)
 
-from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
+from selection.randomized.glm import standard_ci
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive',
@@ -52,9 +52,8 @@ def test_new_data(s=0,
         X2, y2, _, _, _ = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1, random_signs=False)
         loss2 = rr.glm.gaussian(X2, y2)
         loss = rr.glm.gaussian(np.concatenate((X1, X2), axis=0), np.concatenate((y1,y2), axis=0))
-        X, y =loss.data
-        print(X.shape)
-        print(y.shape)
+        X, y = loss.data
+        rr_loss = rr.glm.gaussian
     elif loss=="logistic":
         X1, y1, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal, random_signs=False)
         loss1 = rr.glm.logistic(X1, y1)
@@ -62,7 +61,7 @@ def test_new_data(s=0,
         X2, y2, _, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal, random_signs=False)
         loss2 = rr.glm.logistic(X2, y2)
         loss = rr.glm.logistic(np.concatenate((X1, X2), axis=0), np.concatenate((y1,y2), axis=0))
-
+        rr_loss = rr.glm.logistic
     nonzero = np.where(beta)[0]
 
     if randomizer == 'laplace':
@@ -70,12 +69,12 @@ def test_new_data(s=0,
     elif randomizer == 'gaussian':
         randomizer = randomization.isotropic_gaussian((p,), scale=randomizer_scale)
 
-    epsilon = 1. / np.sqrt(n)
+    epsilon = 1./np.sqrt(n)
     W = np.ones(p)*lam
     #W[0] = 0 # use at least some unpenalized
     penalty = rr.group_lasso(np.arange(p), weights=dict(zip(np.arange(p), W)), lagrange=1.)
     M_est = glm_group_lasso(loss1, epsilon, penalty, randomizer)
-    #M_est.solve()
+    M_est.solve()
     views = [M_est]
     queries = multiple_queries(views)
     queries.solve()
@@ -135,17 +134,12 @@ def test_new_data(s=0,
         covered_naive, ci_length_naive = coverage(LU_naive)
         naive_pvals = naive_pvalues(target_sampler, target_observed, np.zeros(nactive))
 
-        target_sampler2, target_observed2 = glm_target(loss2,
-                                                      active_union,
-                                                      views,
-                                                      bootstrap=False)
-        LU_split = naive_confidence_intervals(target_sampler2, target_observed2)
+        LU_split, split_pvalues = standard_ci(rr_loss, X2, y2, active_union, np.ones(n, np.bool))
         covered_split, ci_length_split = coverage(LU_split)
-        split_pvals = naive_pvalues(target_sampler, target_observed, np.zeros(nactive))
 
         return pivots, covered, ci_length, \
                naive_pvals, covered_naive, ci_length_naive, \
-               split_pvals, covered_split, ci_length_split
+               split_pvalues, covered_split, ci_length_split
 
 
 def report(niter=1, **kwargs):
@@ -156,7 +150,8 @@ def report(niter=1, **kwargs):
                                          niter,
                                          reports.summarize_all,
                                          **kwargs)
-    label = ''.join(["test_new_data.pkl", "_", kwargs['loss'], "_", kwargs['randomizer']])
+
+    label = "test_new_data"
 
     pkl_label = ''.join([label, ".pkl"])
     pdf_label = ''.join([label, ".pdf"])
@@ -174,4 +169,4 @@ if __name__ == '__main__':
     #kwargs = {'s':30, 'n':3000, 'p':1000, 'signal':3.5, 'rho':0, 'loss':'gaussian', 'randomizer':'gaussian',
     #              'randomizer_scale':1.2, 'lam_frac':1.}
     #report(niter=1, **kwargs)
-    report(niter=1)
+    report(niter=50)
