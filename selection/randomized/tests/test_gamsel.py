@@ -40,11 +40,8 @@ rpy2.robjects.numpy2ri.activate()
 
 robjects.r('''
  setup_gamsel = function(x, degree, df){
-  print(paste("degree", degree))
-  print(paste("df", df))
   bases = pseudo.bases(x=x, degree = degree, df = df, parallel=FALSE)
   degrees = sapply(bases, dim)[2, ]
-  print(degrees)
   U = do.call("cbind", bases)
   X = do.call("cbind", lapply(bases, function(x) x[, 1, drop = FALSE])) # unit norm version of x
 
@@ -81,7 +78,7 @@ def test_gamsel(s=0,
                 p=10,
                 rho=0.,
                 signal=3.5,
-                lam_frac = 3.,
+                lam_frac = 3.5,
                 ndraw=10000,
                 burnin=2000,
                 loss='gaussian',
@@ -101,7 +98,7 @@ def test_gamsel(s=0,
         gamma = 0.4
 
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1)
-        #print(X[:4,:])
+
         ## forming U, psi and D should come here
         r_setup_gamsel = robjects.globalenv['setup_gamsel']
         r_X = robjects.r.matrix(X, nrow=n, ncol=p)
@@ -111,14 +108,15 @@ def test_gamsel(s=0,
         U = np.array(result[2])
         degrees = np.array(result[3])
 
-        #print((U[:4,:]))
-        print("D_star dim", D_star_seq.shape)
-        print("U dim", U.shape)
-        print("psi seq dim", psi_seq.shape)
-        V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq))))
-        print("V dim", V.shape)
-        #print(V[:4,:])
-        # V = np.random.standard_normal((n, p*degrees))/np.sqrt(n)
+        # remove X from U:
+        keep_indices = np.ones(U.shape[1], np.bool)
+        ind = 0
+        for i in range(p):
+            keep_indices[ind] = False
+            ind = ind + degrees[i]
+        U = U[:, keep_indices]
+
+        V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq[keep_indices]))))
 
         intercept = np.ones((n,1))/np.sqrt(n)
         X_joint = np.concatenate((intercept, X, V), axis=1)
@@ -143,7 +141,8 @@ def test_gamsel(s=0,
     epsilon = 1. / np.sqrt(n)
     psi_seq_extended = []
     for i in range(p):
-        add_group_penalty = np.concatenate(([0], np.ones(degrees[i]-1)*psi_seq[i]))
+        #add_group_penalty = np.concatenate(([0], np.ones(degrees[i]-1)*psi_seq[i]))
+        add_group_penalty = np.ones(degrees[i] - 1) * psi_seq[i]
         psi_seq_extended = np.concatenate((psi_seq_extended, add_group_penalty))
     epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate((np.zeros(p+1), psi_seq_extended)) # ridge_penalty_weights
 
@@ -151,7 +150,7 @@ def test_gamsel(s=0,
     weights = dict(zip(groups, np.ones(p+1) * lam * gamma))
     weights.update({0:0}) # no penalty on the intercept
     for i in range(p+1, 2*p+1): # add p more groups
-        group = np.ones(degrees[i-(p+1)]) * i
+        group = np.ones(degrees[i-(p+1)]-1) * i
         groups = np.concatenate((groups, group))
         weights.update({i:lam*(1-gamma)})
     groups = np.array(groups, int)
@@ -175,15 +174,15 @@ def test_gamsel(s=0,
         active_union += view.selection_variable['variables']
 
     nactive = np.sum(active_union)
-    print("nactive", nactive)
+    print("nactive variables", nactive)
     print("active groups", np.where(views[0]._active_groups)[0])
 
-    matrix = np.dot(X_joint[:,active_union].T, X_joint[:,active_union])
-    print(np.linalg.cond(matrix))
+    #matrix = np.dot(X_joint[:,active_union].T, X_joint[:,active_union])
+    #print(np.linalg.cond(matrix))
 
-    print(X[:2,:])
-    print(X_joint[:2,:][:,active_union])
-    return("loc")
+    #print(X[:2,:])
+    #print(X_joint[:2,:][:,active_union])
+
     nonzero = np.where(beta)[0]
     true_vec = beta_joint[active_union]
 
