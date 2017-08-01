@@ -104,7 +104,6 @@ class M_estimator(query):
 
         self.active_penalty = active_penalty
         # solve the restricted problem
-
         self._overall = active + unpenalized
         self._inactive = ~self._overall
         self._unpenalized = unpenalized

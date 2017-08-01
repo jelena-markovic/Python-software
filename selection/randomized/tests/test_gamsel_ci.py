@@ -61,11 +61,83 @@ robjects.r('''
   }
   dpsi = lapply(parms, getdpsi)
   D_seq = unlist(lapply(dpsi, "[[", "d"))
-    print(length(D_seq))
   psi = sapply(dpsi, "[[", "psi")
   return(list(D_seq = D_seq, psi=psi, U=U, degrees=degrees))
 }
 ''')
+
+
+def setup_gamsel(s, n, p, rho, signal, lam_frac,
+                 degree, df, gamma):
+
+    X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1)
+
+    ## forming U, psi and D should come here
+    r_setup_gamsel = robjects.globalenv['setup_gamsel']
+    r_X = robjects.r.matrix(X, nrow=n, ncol=p)
+    result = r_setup_gamsel(r_X, degree, df)
+    D_star_seq = np.array(result[0])
+    psi_seq = np.array(result[1])
+    U = np.array(result[2])
+    degrees = np.array(result[3])
+
+    # remove X from U:
+    keep_indices = np.ones(U.shape[1], np.bool)
+    ind = 0
+    for i in range(p):
+        keep_indices[ind] = False
+        ind = ind + degrees[i]
+    U = U[:, keep_indices]
+
+    V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq[keep_indices]))))
+
+    intercept = np.ones((n, 1)) / np.sqrt(n)
+    X_joint = np.concatenate((intercept, X, V), axis=1)
+    p_joint = X_joint.shape[1]
+    print("design dim", p_joint)
+    beta_joint = np.concatenate((beta, np.zeros(p_joint - beta.shape[0])))
+
+    lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
+    loss = rr.glm.gaussian(X_joint, y)
+
+    epsilon = 1. / np.sqrt(n)
+    psi_seq_extended = []
+    for i in range(p):
+        # add_group_penalty = np.concatenate(([0], np.ones(degrees[i]-1)*psi_seq[i]))
+        add_group_penalty = np.ones(degrees[i] - 1) * psi_seq[i]
+        psi_seq_extended = np.concatenate((psi_seq_extended, add_group_penalty))
+    epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate(
+        (np.zeros(p + 1), psi_seq_extended))  # ridge_penalty_weights
+
+    groups = np.arange(p + 1)  # initially intercept and individual predictors
+    weights = dict(zip(groups, np.ones(p + 1) * lam * gamma))
+    weights.update({0: 0})  # no penalty on the intercept
+    for i in range(p + 1, 2 * p + 1):  # add p more groups
+        group = np.ones(degrees[i - (p + 1)] - 1) * i
+        groups = np.concatenate((groups, group))
+        weights.update({i: lam * (1 - gamma)})
+    groups = np.array(groups, int)
+
+    print("groups", set(groups))
+    print("weights", weights)
+    penalty = rr.group_lasso(groups, weights=weights, lagrange=1.)
+    return loss, epsilon_seq, penalty, beta, beta_joint
+
+
+def coverage(LU, check_screen, true_vec):
+    L, U = LU[:, 0], LU[:, 1]
+    nactive = true_vec.shape[0]
+    covered = np.zeros(nactive)
+    ci_length = np.zeros(nactive)
+
+    for j in range(nactive):
+        if check_screen:
+            if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
+                covered[j] = 1
+        else:
+            covered[j] = None
+        ci_length[j] = U[j] - L[j]
+    return covered, ci_length
 
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
@@ -73,12 +145,15 @@ robjects.r('''
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_gamsel(s=0,
+def test_gamsel_ci(s=0,
                 n=300,
                 p=10,
                 rho=0.,
                 signal=3.5,
-                lam_frac = 3.5,
+                lam_frac = 4.,
+                degree = 3,
+                df=2,
+                gamma=0.4,
                 ndraw=10000,
                 burnin=2000,
                 loss='gaussian',
@@ -93,43 +168,16 @@ def test_gamsel(s=0,
     print(n,p,s)
 
     if loss=="gaussian":
-        degree = 3
-        df = 2
-        gamma = 0.4
+        loss, epsilon_seq, penalty, beta, beta_joint = setup_gamsel(s=s, n=n, p=p, rho=rho, signal=signal,
+                                                              lam_frac=lam_frac, degree=degree, df=df, gamma=gamma)
 
-        X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1)
-
-        ## forming U, psi and D should come here
-        r_setup_gamsel = robjects.globalenv['setup_gamsel']
-        r_X = robjects.r.matrix(X, nrow=n, ncol=p)
-        result = r_setup_gamsel(r_X, degree, df)
-        D_star_seq = np.array(result[0])
-        psi_seq = np.array(result[1])
-        U = np.array(result[2])
-        degrees = np.array(result[3])
-
-        # remove X from U:
-        keep_indices = np.ones(U.shape[1], np.bool)
-        ind = 0
-        for i in range(p):
-            keep_indices[ind] = False
-            ind = ind + degrees[i]
-        U = U[:, keep_indices]
-
-        V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq[keep_indices]))))
-
-        intercept = np.ones((n,1))/np.sqrt(n)
-        X_joint = np.concatenate((intercept, X, V), axis=1)
-        p_joint = X_joint.shape[1]
-        print("design dim", p_joint)
-        beta_joint = np.concatenate((beta, np.zeros(p_joint-beta.shape[0])))
-
-        lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
-        loss = rr.glm.gaussian(X_joint, y)
     elif loss=="logistic":
         X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal)
         loss = rr.glm.logistic(X, y)
         lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.binomial(1, 1. / 2, (n, 10000)))).max(0))
+
+    X_joint, _ = loss.data
+    p_joint = X_joint.shape[1]
 
     if randomizer == 'laplace':
         randomizer = randomization.laplace((p_joint,), scale=randomizer_scale)
@@ -137,27 +185,6 @@ def test_gamsel(s=0,
         randomizer = randomization.isotropic_gaussian((p_joint,), randomizer_scale)
     elif randomizer == 'logistic':
         randomizer = randomization.logistic((p_joint,), scale=randomizer_scale)
-
-    epsilon = 1. / np.sqrt(n)
-    psi_seq_extended = []
-    for i in range(p):
-        #add_group_penalty = np.concatenate(([0], np.ones(degrees[i]-1)*psi_seq[i]))
-        add_group_penalty = np.ones(degrees[i] - 1) * psi_seq[i]
-        psi_seq_extended = np.concatenate((psi_seq_extended, add_group_penalty))
-    epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate((np.zeros(p+1), psi_seq_extended)) # ridge_penalty_weights
-
-    groups = np.arange(p+1) # initially intercept and individual predictors
-    weights = dict(zip(groups, np.ones(p+1) * lam * gamma))
-    weights.update({0:0}) # no penalty on the intercept
-    for i in range(p+1, 2*p+1): # add p more groups
-        group = np.ones(degrees[i-(p+1)]-1) * i
-        groups = np.concatenate((groups, group))
-        weights.update({i:lam*(1-gamma)})
-    groups = np.array(groups, int)
-
-    print("groups", set(groups))
-    print("weights", weights)
-    penalty = rr.group_lasso(groups, weights=weights, lagrange=1.)
 
     views = []
     for i in range(nviews):
@@ -177,11 +204,6 @@ def test_gamsel(s=0,
     print("nactive variables", nactive)
     print("active groups", np.where(views[0]._active_groups)[0])
 
-    #matrix = np.dot(X_joint[:,active_union].T, X_joint[:,active_union])
-    #print(np.linalg.cond(matrix))
-
-    #print(X[:2,:])
-    #print(X_joint[:2,:][:,active_union])
 
     nonzero = np.where(beta)[0]
     true_vec = beta_joint[active_union]
@@ -226,12 +248,12 @@ def test_gamsel(s=0,
                                                            sample=full_sample,
                                                            level=0.9)
             pivots = target_sampler.coefficient_pvalues_translate(target_observed,
-                                                                    parameter=true_vec,
-                                                                    sample=full_sample)
+                                                                  parameter=true_vec,
+                                                                  sample=full_sample)
 
-        #test_stat = lambda x: np.linalg.norm(x - beta[active_union])
-        #observed_test_value = test_stat(target_observed)
-        #pivots = target_sampler.hypothesis_test(test_stat,
+        # test_stat = lambda x: np.linalg.norm(x - beta[active_union])
+        # observed_test_value = test_stat(target_observed)
+        # pivots = target_sampler.hypothesis_test(test_stat,
         #                                       observed_test_value,
         #                                       alternative='twosided',
         #                                       parameter = beta[active_union],
@@ -239,30 +261,18 @@ def test_gamsel(s=0,
         #                                       burnin=burnin,
         #                                       stepsize=None)
 
-        def coverage(LU):
-            L, U = LU[:, 0], LU[:, 1]
-            covered = np.zeros(nactive)
-            ci_length = np.zeros(nactive)
 
-            for j in range(nactive):
-                if check_screen:
-                    if (L[j] <= true_vec[j]) and (U[j] >= true_vec[j]):
-                        covered[j] = 1
-                else:
-                    covered[j] = None
-                ci_length[j] = U[j] - L[j]
-            return covered, ci_length
-
-        covered, ci_length = coverage(LU)
+        covered, ci_length = coverage(LU, check_screen, true_vec)
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
-        covered_naive, ci_length_naive = coverage(LU_naive)
+        covered_naive, ci_length_naive = coverage(LU_naive, check_screen, true_vec)
         naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
 
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
 
+
 def report(niter=50, **kwargs):
 
-    condition_report = reports.reports['test_gamsel']
+    condition_report = reports.reports['test_gamsel_ci']
     runs = reports.collect_multiple_runs(condition_report['test'],
                                          condition_report['columns'],
                                          niter,
@@ -271,8 +281,8 @@ def report(niter=50, **kwargs):
 
     fig = reports.pivot_plot_plus_naive(runs)
     #fig = reports.pivot_plot_2in1(runs,color='b', label='marginalized subgradient')
-    fig.suptitle('Randomized group Lasso marginalized subgradient')
-    fig.savefig('marginalized_subgrad_pivots.pdf')
+    fig.suptitle('gamsel_ci')
+    fig.savefig('gamsel_ci.pdf')
 
 
 if __name__ == '__main__':
