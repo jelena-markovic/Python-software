@@ -4,7 +4,6 @@ import numpy as np
 import regreg.api as rr
 import selection.tests.reports as reports
 
-
 from selection.tests.flags import SET_SEED, SMALL_SAMPLES
 from selection.tests.instance import logistic_instance, gaussian_instance
 from selection.tests.decorators import (wait_for_return_value,
@@ -25,7 +24,16 @@ from selection.api import (randomization,
 
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 from selection.randomized.tests.test_gamsel_ci import setup_gamsel
+from scipy.stats import chi2
 
+
+def naive_pvalue(observed, cov, indices):
+    observed_subset = observed[indices]
+    cov_subset = cov[:, indices][indices,:]
+    cov_subset_cholesky = np.linalg.cholesky(np.linalg.inv(cov_subset))
+    observed_test_value = np.linalg.norm(np.dot(cov_subset_cholesky, observed_subset))**2
+    pval = chi2.cdf(observed_test_value, df=np.sum(indices))
+    return 2*min(pval, 1-pval)
 
 @register_report(['truth', 'naive_pvalues'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
@@ -141,10 +149,9 @@ def test_gamsel_test(s=0,
         family = discrete_family(sample_test_stat, np.ones(target_sample.shape[0]))
         pval = family.cdf(0, observed_test_value)
 
-        print(pval)
-        #naive_pvals = naive_pvalues(target_sampler, target_observed, true_vec)
+        naive_pval = naive_pvalue(target_observed, target_sampler.target_cov, interest_group_active_vars)
 
-        return [pval] #, [0] #naive_pvals
+        return [pval], [naive_pval]
 
 
 def report(niter=50, **kwargs):
