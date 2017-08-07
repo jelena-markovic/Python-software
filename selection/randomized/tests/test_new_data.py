@@ -112,7 +112,7 @@ def test_new_data(s=0,
         def sampler2():
             indices1 = np.random.choice(n, size=(n,), replace=True)
             indices2 = n+np.random.choice(n, size=(n,), replace=True)
-            return (np.concatenate((indices1, indices2),axis=0), indices1)
+            return (np.concatenate((indices1, indices2), axis=0), indices1)
 
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
@@ -170,7 +170,7 @@ def report(niter=1, **kwargs):
 
     fig = reports.pivot_plot_plus_naive(runs_read, color='b', label='no screening')
 
-    fig.suptitle('Testing without screening', fontsize=20)
+    fig.suptitle('Inference after adding fresh data', fontsize=20)
     fig.savefig(pdf_label)
 
 
