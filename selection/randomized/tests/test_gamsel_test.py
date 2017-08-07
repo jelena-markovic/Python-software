@@ -35,6 +35,7 @@ def naive_pvalue(observed, cov, indices):
     pval = chi2.cdf(observed_test_value, df=np.sum(indices))
     return 2*min(pval, 1-pval)
 
+
 @register_report(['truth', 'naive_pvalues'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
@@ -141,7 +142,7 @@ def test_gamsel_test(s=0,
                                                      reference=reference)
 
         target_sample = target_sampler.sample(ndraw=ndraw,
-                                            burnin=burnin)
+                                             burnin=burnin)
 
         test_stat = lambda x: np.linalg.norm(x[interest_group_active_vars])
         observed_test_value = test_stat(target_observed)
@@ -154,7 +155,7 @@ def test_gamsel_test(s=0,
         return [pval], [naive_pval]
 
 
-def report(niter=50, **kwargs):
+def report(niter=100, **kwargs):
 
     condition_report = reports.reports['test_gamsel_test']
     runs = reports.collect_multiple_runs(condition_report['test'],
