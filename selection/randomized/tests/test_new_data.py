@@ -23,7 +23,7 @@ from selection.api import (randomization,
 from selection.randomized.glm import glm_group_lasso_new_data
 from selection.randomized.query import (naive_confidence_intervals, naive_pvalues)
 
-from selection.randomized.glm import standard_ci
+from selection.randomized.glm import standard_split_ci
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive',
@@ -144,7 +144,7 @@ def test_new_data(s=0,
         covered_naive, ci_length_naive = coverage(LU_naive)
         naive_pvals = naive_pvalues(target_sampler, target_observed, np.zeros(nactive))
 
-        LU_split, split_pvalues = standard_ci(rr_loss, X2, y2, active_union, np.ones(n, np.bool))
+        LU_split, split_pvalues = standard_split_ci(rr_loss, X2, y2, active_union, np.ones(n, np.bool))
         covered_split, ci_length_split = coverage(LU_split)
 
         return pivots, covered, ci_length, \
