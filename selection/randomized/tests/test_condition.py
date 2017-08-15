@@ -37,7 +37,7 @@ def test_condition(s=0,
                    ndraw=10000, burnin=2000,
                    loss='logistic',
                    nviews=1,
-                   scalings=False):
+                   scalings=True):
 
     if loss=="gaussian":
         X, y, beta, nonzero, sigma = gaussian_instance(n=n, p=p, s=s, rho=rho, signal=signal, sigma=1)
@@ -80,11 +80,17 @@ def test_condition(s=0,
 
         if scalings: # try condition on some scalings
             for i in range(nviews):
-                views[i].condition_on_subgradient()
+                conditioning_groups = np.zeros(p, bool)
+                conditioning_groups[:int(p/2)] = True
+                marginalizing_groups = np.ones(p, bool)
+                marginalizing_groups[:int(p/2)] = False
+                views[i].decompose_subgradient(conditioning_groups=conditioning_groups,
+                                               marginalizing_groups=marginalizing_groups)
                 views[i].condition_on_scalings()
         else:
             for i in range(nviews):
-               views[i].condition_on_subgradient()
+               views[i].decompose_subgradient(conditioning_groups=np.zeros(p, bool),
+                                               marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
         target_sampler, target_observed = glm_target(loss,

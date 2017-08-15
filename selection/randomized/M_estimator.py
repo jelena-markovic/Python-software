@@ -1,5 +1,6 @@
 import numpy as np
 import regreg.api as rr
+import regreg.affine as ra
 
 from .query import query
 from .randomization import split
@@ -104,7 +105,7 @@ class M_estimator(query):
         self.active_penalty = active_penalty
         # solve the restricted problem
 
-        self._overall = active + unpenalized
+        self._overall = active + unpenalized > 0
         self._inactive = ~self._overall
         self._unpenalized = unpenalized
 
@@ -277,7 +278,7 @@ class M_estimator(query):
 
     def form_VQLambda(self):
         nactive_groups = len(self.active_directions_list)
-        nactive_vars = np.sum([self.active_directions_list[i].shape[0] for i in range(nactive_groups)])
+        nactive_vars = sum([self.active_directions_list[i].shape[0] for i in range(nactive_groups)])
         V = np.zeros((nactive_vars, nactive_vars-nactive_groups))
         #U = np.zeros((nvariables, ngroups))
         Lambda = np.zeros((nactive_vars,nactive_vars))
@@ -361,15 +362,17 @@ class M_estimator(query):
 
     def decompose_subgradient(self, conditioning_groups, marginalizing_groups=None):
         """
-        Maybe we should allow subgradients of only some variables...
+        ADD DOCSTRING
+
+        conditioning_groups and marginalizing_groups should be disjoint
         """
+
+        if marginalizing_groups is not None and (conditioning_groups * marginalizing_groups).sum() > 0:
+            raise ValueError("cannot simultaneously condition and marginalize over a group's subgradient")
+
         if not self._setup:
             raise ValueError('setup_sampler should be called before using this function')
 
-        #if marginalizing_groups is not None and self._inactive is not None:
-
-
-        #idx = 0
         groups = np.unique(self.penalty.groups)
         condition_inactive_groups = np.zeros_like(groups, dtype=bool)
         condition_inactive_variables = np.zeros_like(self._inactive, dtype=bool)
@@ -437,8 +440,10 @@ class M_estimator(query):
 
 
         self.opt_transform = (new_linear, new_offset)
+
         # for group LASSO this should not induce a bigger jacobian as
         # the subgradients are in the interior of a ball
+
         self.selection_variable['subgradient'] = self.observed_opt_state[self.subgrad_slice]
 
         # reset variables
@@ -503,13 +508,36 @@ class M_estimator(query):
             return query.construct_weights(self, full_state)
 
 def restricted_Mest(Mest_loss, active, solve_args={'min_its':50, 'tol':1.e-10}):
+    """
+    Fit a restricted model using only columns `active`.
 
+    Parameters
+    ----------
+
+    Mest_loss : objective function
+        A GLM loss.
+
+    active : ndarray
+        Which columns to use.
+
+    solve_args : dict
+        Passed to `solve`.
+
+    Returns
+    -------
+
+    soln : ndarray
+        Solution to restricted problem.
+
+    """
     X, Y = Mest_loss.data
 
-    if Mest_loss._is_transform:
-        raise NotImplementedError('to fit restricted model, X must be an ndarray or scipy.sparse; general transforms not implemented')
-    X_restricted = X[:,active]
-    loss_restricted = rr.affine_smooth(Mest_loss.saturated_loss, X_restricted)
+    if not Mest_loss._is_transform and hasattr(Mest_loss, 'saturated_loss'): # M_est is a glm
+        X_restricted = X[:,active]
+        loss_restricted = rr.affine_smooth(Mest_loss.saturated_loss, X_restricted)
+    else:
+        I_restricted = ra.selector(active, ra.astransform(X).input_shape[0], ra.identity((active.sum(),)))
+        loss_restricted = rr.affine_smooth(Mest_loss, I_restricted.T)
     beta_E = loss_restricted.solve(**solve_args)
     
     return beta_E

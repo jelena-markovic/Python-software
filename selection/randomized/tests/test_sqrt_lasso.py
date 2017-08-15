@@ -1,22 +1,18 @@
 import numpy as np
 
 import regreg.api as rr
-from selection.api import (randomization,
-                           glm_group_lasso,
-                           multiple_queries,
-                           glm_target)
-from selection.tests.instance import (gaussian_instance,
+from ..api import (randomization,
+                   glm_group_lasso,
+                   multiple_queries,
+                   glm_target)
+from ...tests.instance import (gaussian_instance,
                                       logistic_instance)
-from selection.algorithms.sqrt_lasso import (sqlasso_objective,
-                                             choose_lambda)
-from selection.randomized.query import naive_confidence_intervals
-from selection.randomized.query import naive_pvalues
+from ...algorithms.sqrt_lasso import (sqlasso_objective,
+                                      choose_lambda)
+from ..query import naive_confidence_intervals, naive_pvalues
 
-import selection.tests.reports as reports
-from selection.tests.flags import SMALL_SAMPLES, SET_SEED
-from selection.tests.decorators import wait_for_return_value, set_seed_iftrue, set_sampling_params_iftrue, register_report
-from selection.randomized.cv_view import CV_view
-
+from ...tests.flags import SMALL_SAMPLES, SET_SEED
+from ...tests.decorators import wait_for_return_value, set_seed_iftrue, set_sampling_params_iftrue, register_report
 
 def choose_lambda_with_randomization(X, randomization, quantile=0.90, ndraw=10000):
     X = rr.astransform(X)
@@ -33,18 +29,18 @@ def choose_lambda_with_randomization(X, randomization, quantile=0.90, ndraw=1000
 @set_seed_iftrue(SET_SEED)
 @set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
-def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
-             randomizer = 'gaussian',
-             randomizer_scale = 1.,
-             scale1 = 0.1,
-             scale2 = 0.2,
-             lam_frac = 1.,
-             intervals = 'old',
-             bootstrap = False,
-             condition_on_CVR = False,
-             marginalize_subgrad = True,
-             ndraw = 10000,
-             burnin = 2000):
+def test_sqrt_lasso(n=500, p=20, s=3, signal=10, K=5, rho=0.,
+                    randomizer = 'gaussian',
+                    randomizer_scale = 1.,
+                    scale1 = 0.1,
+                    scale2 = 0.2,
+                    lam_frac = 1.,
+                    intervals = 'old',
+                    bootstrap = False,
+                    condition_on_CVR = False,
+                    marginalize_subgrad = True,
+                    ndraw = 10000,
+                    burnin = 2000):
 
     print(n,p,s)
     if randomizer == 'laplace':
@@ -59,7 +55,7 @@ def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
     lam_random = choose_lambda_with_randomization(X, randomizer)
     loss = sqlasso_objective(X, y)
 
-    epsilon = 1./np.sqrt(n)
+    epsilon = 1./n
 
     # non-randomized sqrt-Lasso, just looking how many vars it selects
     problem = rr.simple_problem(loss, rr.l1norm(p, lagrange=lam_nonrandom))
@@ -71,7 +67,7 @@ def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
     # view 2
     W = lam_frac * np.ones(p) * lam_random
     penalty = rr.group_lasso(np.arange(p),
-                             weights=dict(zip(np.arange(p), W)), lagrange=1.)
+                             weights=dict(zip(np.arange(p), W)), lagrange=1. / np.sqrt(n))
     M_est1 = glm_group_lasso(loss, epsilon, penalty, randomizer)
 
     mv = multiple_queries([M_est1])
@@ -84,6 +80,9 @@ def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
     if nactive==0:
         return None
 
+    import sys
+    sys.stderr.write(`(nonzero, active_union )` + '\n')
+
     nonzero = np.where(beta)[0]
     if set(nonzero).issubset(np.nonzero(active_union)[0]):
 
@@ -94,7 +93,7 @@ def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
             M_est1.decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool),
                                          marginalizing_groups=np.ones(p, bool))
 
-        target_sampler, target_observed = glm_target(glm_loss,
+        target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      mv,
                                                      bootstrap=bootstrap)
@@ -159,20 +158,3 @@ def test_cv(n=500, p=20, s=0, signal=5, K=5, rho=0.,
         return pivots_truth, sel_covered, sel_length, naive_pvals, naive_covered, naive_length, active_var, BH_desicions, active_var
 
 
-def report(niter=10, **kwargs):
-
-    kwargs = {'s': 30, 'n': 3000, 'p': 1000, 'signal': 3.5, 'bootstrap': False}
-    intervals_report = reports.reports['test_cv']
-    CV_runs = reports.collect_multiple_runs(intervals_report['test'],
-                                             intervals_report['columns'],
-                                             niter,
-                                             reports.summarize_all,
-                                             **kwargs)
-
-    fig = reports.pivot_plot_plus_naive(CV_runs)
-    fig.suptitle("CV pivots")
-    fig.savefig('cv_pivots.pdf')
-
-
-if __name__ == '__main__':
-    report()

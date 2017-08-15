@@ -6,8 +6,6 @@ from scipy.optimize import bisect
 from ..distributions.api import discrete_family, intervals_from_sample
 from ..sampling.langevin import projected_langevin
 
-
-
 class query(object):
 
     def __init__(self, randomization):
@@ -236,8 +234,7 @@ class multiple_queries(object):
         curr_randomization_length = 0
         self.randomization_slice = []
         for objective in self.objectives:
-            randomization_length = objective._beta_full.shape[0]
-            #print(randomization_length)
+            randomization_length = objective.loss.shape[0]
             self.randomization_slice.append(slice(curr_randomization_length,
                                                   curr_randomization_length + randomization_length))
             curr_randomization_length = curr_randomization_length + randomization_length
@@ -402,12 +399,13 @@ class targeted_sampler(object):
         self.score_cov = []
         for i in range(self.nqueries):
             if parametric == False:
-                target_cov, cross_cov = multi_view.form_covariances(target_info,
-                                  cross_terms=[multi_view.score_info[i]],
-                                  nsample=multi_view.nboot[i])
+                target_cov, cross_cov = multi_view.form_covariances(target_info,  
+                                                                    cross_terms=[multi_view.score_info[i]],
+                                                                    nsample=multi_view.nboot[i])
+
             else:
                 target_cov, cross_cov = multi_view.form_covariances(target_info, 
-                                  cross_terms=[multi_view.score_info[i]])
+                                                                    cross_terms=[multi_view.score_info[i]])
 
             self.target_cov = target_cov
             self.score_cov.append(cross_cov)
@@ -430,6 +428,7 @@ class targeted_sampler(object):
                 self.objectives[i].linear_decomposition(self.score_cov[i],
                                                         self.target_cov,
                                                         self.observed_target_state))
+        self.target_cov = np.atleast_2d(self.target_cov)
         self.target_inv_cov = np.linalg.inv(self.target_cov)
         # size of reference? should it only be target_set?
         if reference is None:

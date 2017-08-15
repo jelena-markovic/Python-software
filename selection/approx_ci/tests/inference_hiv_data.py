@@ -1,11 +1,14 @@
+from __future__ import print_function
 import os, numpy as np, pandas, statsmodels.api as sm
 import time
-import matplotlib.pyplot as plt
 import regreg.api as rr
-from selection.reduced_optimization.initial_soln import selection
-from selection.randomized.api import randomization
-from selection.reduced_optimization.lasso_reduced import nonnegative_softmax_scaled, neg_log_cube_probability, selection_probability_lasso, \
-    sel_prob_gradient_map_lasso, selective_inf_lasso
+from selection.tests.instance import logistic_instance, gaussian_instance
+from selection.approx_ci.ci_via_approx_density import approximate_conditional_density
+from selection.approx_ci.estimator_approx import M_estimator_approx
+
+from selection.randomized.query import naive_confidence_intervals
+from selection.api import randomization
+import matplotlib.pyplot as plt
 
 
 if not os.path.exists("NRTI_DATA.txt"):
@@ -26,9 +29,6 @@ for i in range(1,241):
                 NRTI_muts.append("P%d%s" % (i,mut))
 
 NRTI_specific = NRTI.from_records(np.array(NRTI_specific).T, columns=NRTI_muts)
-print("here")
-
-# Next, standardize the data, keeping only those where Y is not missing
 
 X_NRTI = np.array(NRTI_specific, np.float)
 Y = NRTI['3TC'] # shorthand
@@ -44,74 +44,57 @@ ols_fit = sm.OLS(Y, X).fit()
 sigma_3TC = np.linalg.norm(ols_fit.resid) / np.sqrt(n-p-1)
 OLS_3TC = ols_fit.params
 
-# Design matrix
-# Columns are site / amino acid pairs
+lam_frac = 1.
+loss = rr.glm.gaussian(X, Y)
+epsilon = 1. / np.sqrt(n)
+lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 2000)))).max(0)) * sigma_3TC
+print(lam)
 
+W = np.ones(p) * lam
+penalty = rr.group_lasso(np.arange(p),weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
-#solving the Lasso at theoretical lambda
-tau = 1.0
-print(tau**2)
-random_Z = np.random.normal(loc=0.0, scale= tau, size= p)
-sel = selection(X, Y, random_Z, sigma=sigma_3TC)
+randomization = randomization.isotropic_gaussian((p,), scale=1.)
 
-lam, epsilon, active, betaE, cube, initial_soln = sel
-
-print("value of tuning parameter",lam)
-print("nactive", active.sum())
+M_est = M_estimator_approx(loss, epsilon, penalty, randomization, randomizer='gaussian')
+M_est.solve_approx()
+active = M_est._overall
+active_set = np.asarray([i for i in range(p) if active[i]])
+nactive = np.sum(active)
 
 active_set_0 = [NRTI_muts[i] for i in range(p) if active[i]]
-print("active variables", active_set_0)
-active_set = [i for i in range(p) if active[i]]
 
-noise_variance = sigma_3TC**2
-nactive = betaE.shape[0]
-active_sign = np.sign(betaE)
-feasible_point = np.fabs(betaE)
-lagrange = lam * np.ones(p)
+ci_active = np.zeros((nactive, 2))
+ci_length = np.zeros(nactive)
+mle_active = np.zeros((nactive,1))
 
-generative_X = X[:, active]
-prior_variance = 1000.
-randomizer = randomization.isotropic_gaussian((p,), 1.)
+ci = approximate_conditional_density(M_est)
+ci.solve_approx()
 
-Q = np.linalg.inv(prior_variance* (generative_X.dot(generative_X.T)) + noise_variance* np.identity(n))
-post_mean = prior_variance * ((generative_X.T.dot(Q)).dot(Y))
-post_var = prior_variance* np.identity(nactive) - ((prior_variance**2)*(generative_X.T.dot(Q).dot(generative_X)))
-unadjusted_intervals = np.vstack([post_mean - 1.65*(post_var.diagonal()),post_mean + 1.65*(post_var.diagonal())])
-unadjusted_intervals = np.vstack([post_mean, unadjusted_intervals])
-#print(unadjusted_intervals)
+class target_class(object):
+    def __init__(self, target_cov):
+        self.target_cov = target_cov
+        self.shape = target_cov.shape
 
-grad_map = sel_prob_gradient_map_lasso(X,
-                                       feasible_point,
-                                       active,
-                                       active_sign,
-                                       lagrange,
-                                       generative_X,
-                                       noise_variance,
-                                       randomizer,
-                                       epsilon)
 
-inf = selective_inf_lasso(Y, grad_map, prior_variance)
+target = target_class(M_est.target_cov)
+ci_naive = naive_confidence_intervals(target, M_est.target_observed)
 
-#map = inf.map_solve(nstep = 500)[::-1]
+for j in range(nactive):
+    ci_active[j, :] = np.array(ci.approximate_ci(j))
+    ci_length[j] = ci_active[j,1] - ci_active[j,0]
+    mle_active[j, :] = ci.approx_MLE_solver(j, nstep=100)[0]
 
-toc = time.time()
-samples = inf.posterior_samples()
-tic = time.time()
-print('sampling time', tic - toc)
+unadjusted_mle = np.zeros((nactive,1))
+for j in range(nactive):
+    unadjusted_mle[j, :] = ci.target_observed[j]
 
-adjusted_intervals = np.vstack([np.percentile(samples, 5, axis=0), np.percentile(samples, 95, axis=0)])
-sel_mean = np.mean(samples, axis=0)
-adjusted_intervals = np.vstack([sel_mean, adjusted_intervals])
+adjusted_intervals = np.hstack([mle_active, ci_active]).T
+unadjusted_intervals = np.hstack([unadjusted_mle, ci_naive]).T
 
-print("active variables", active_set_0)
-print("selective mean", sel_mean)
-#print("selective map", map[1])
-print("selective map and intervals", adjusted_intervals)
-print("usual posterior based map & intervals", unadjusted_intervals)
+print("adjusted confidence", adjusted_intervals)
+print("naive confidence", unadjusted_intervals)
 
 intervals = np.vstack([unadjusted_intervals, adjusted_intervals])
-
-###################################################################################
 
 un_mean = intervals[0,:]
 un_lower_error = list(un_mean-intervals[1,:])
@@ -136,22 +119,22 @@ fig, ax = plt.subplots()
 
 rects1 = ax.bar(ind, un_mean,                  # data
                 width,                          # bar width
-                color='royalblue',        # bar colour
+                color='darkgrey',        # bar colour
                 yerr=unStd,  # data for error bars
-                error_kw={'ecolor':'darkblue',    # error-bars colour
+                error_kw={'ecolor':'dimgrey',    # error-bars colour
                           'linewidth':2})       # error-bar width
 
 rects2 = ax.bar(ind + width, ad_mean,
                 width,
-                color='red',
+                color='thistle',
                 yerr=adStd,
-                error_kw={'ecolor':'maroon',
+                error_kw={'ecolor':'darkmagenta',
                           'linewidth':2})
 
 axes = plt.gca()
-axes.set_ylim([-8, 70])             # y-axis bounds
+axes.set_ylim([-6, 60])             # y-axis bounds
 
-ax.set_ylabel(' ')
+ax.set_ylabel('Credible')
 ax.set_title('selected variables'.format(active_set))
 ax.set_xticks(ind + 1.2* width)
 
@@ -178,7 +161,7 @@ print('here')
 
 #plt.show()                              # render the plot
 
-plt.savefig('/Users/snigdhapanigrahi/Results_reduced_optimization/credible_hiv_selected_0.pdf', bbox_inches='tight')
+plt.savefig('/Users/snigdhapanigrahi/Documents/Research/Python_plots/icml_hiv_plots.pdf', bbox_inches='tight')
 
 ##################################################
 ind = np.zeros(len(active_set), np.bool)
@@ -188,6 +171,7 @@ ind[index] = 1
 
 active_set_0.pop(index)
 
+active_set = [i for i in range(p) if active[i]]
 active_set.pop(index)
 
 intervals = intervals[:, ~ind]
@@ -213,22 +197,22 @@ fig, ax = plt.subplots()
 
 rects1 = ax.bar(ind, un_mean,                  # data
                 width,                          # bar width
-                color='royalblue',        # bar colour
+                color='darkgrey',        # bar colour
                 yerr=unStd,  # data for error bars
-                error_kw={'ecolor':'darkblue',    # error-bars colour
+                error_kw={'ecolor':'dimgrey',    # error-bars colour
                           'linewidth':2})       # error-bar width
 
 rects2 = ax.bar(ind + width, ad_mean,
                 width,
-                color='red',
+                color='thistle',
                 yerr=adStd,
-                error_kw={'ecolor':'maroon',
+                error_kw={'ecolor':'darkmagenta',
                           'linewidth':2})
 
 axes = plt.gca()
-axes.set_ylim([-8, 12])             # y-axis bounds
+axes.set_ylim([-6, 12])             # y-axis bounds
 
-ax.set_ylabel(' ')
+ax.set_ylabel('Credible')
 ax.set_title('selected variables'.format(active_set))
 ax.set_xticks(ind + 1.2* width)
 
@@ -238,4 +222,4 @@ ax.legend((rects1[0], rects2[0]), ('Unadjusted', 'Adjusted'), loc='upper right')
 
 print('here')
 
-plt.savefig('/Users/snigdhapanigrahi/Results_reduced_optimization/credible_hiv_selected_1.pdf', bbox_inches='tight')
+plt.savefig('/Users/snigdhapanigrahi/Documents/Research/Python_plots/icml_hiv_plots_0.pdf', bbox_inches='tight')
