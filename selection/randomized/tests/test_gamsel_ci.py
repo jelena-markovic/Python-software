@@ -81,15 +81,15 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
     U = np.array(result[2])
     degrees = np.array(result[3])
 
-    # remove X from U:
-    keep_indices = np.ones(U.shape[1], np.bool)
-    ind = 0
-    for i in range(p):
-        keep_indices[ind] = False
-        ind = ind + degrees[i]
-    U = U[:, keep_indices]
+    # remove X from U: shouldn't be done
+    #keep_indices = np.ones(U.shape[1], np.bool)
+    #ind = 0
+    #for i in range(p):
+    #    keep_indices[ind] = False
+    #    ind = ind + degrees[i]
+    #U = U[:, keep_indices]
 
-    V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq[keep_indices]))))
+    V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq))))
 
     intercept = np.ones((n, 1)) / np.sqrt(n)
     X_joint = np.concatenate((intercept, X, V), axis=1)
@@ -104,16 +104,16 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
     psi_seq_extended = []
     for i in range(p):
         # add_group_penalty = np.concatenate(([0], np.ones(degrees[i]-1)*psi_seq[i]))
-        add_group_penalty = np.ones(degrees[i] - 1) * psi_seq[i]
+        add_group_penalty = np.ones(degrees[i]) * psi_seq[i]
         psi_seq_extended = np.concatenate((psi_seq_extended, add_group_penalty))
-    epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate(
-        (np.zeros(p + 1), psi_seq_extended))  # ridge_penalty_weights
+
+    epsilon_seq = epsilon * np.ones(p_joint) + np.concatenate((np.zeros(p + 1), psi_seq_extended))  # ridge_penalty_weights
 
     groups = np.arange(p + 1)  # initially intercept and individual predictors
     weights = dict(zip(groups, np.ones(p + 1) * lam * gamma))
     weights.update({0: 0})  # no penalty on the intercept
     for i in range(p + 1, 2 * p + 1):  # add p more groups
-        group = np.ones(degrees[i - (p + 1)] - 1) * i
+        group = np.ones(degrees[i - (p + 1)]) * i
         groups = np.concatenate((groups, group))
         weights.update({i: lam * (1 - gamma)})
     groups = np.array(groups, int)
