@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ''' Installation script for selection package '''
-
+# Boris
 import os
 import sys
 from os.path import join as pjoin, dirname

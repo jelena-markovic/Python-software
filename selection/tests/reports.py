@@ -304,7 +304,6 @@ def pivot_plot_plus_naive(multiple_results, coverage=True, color='b', label=None
 
     return fig
 
-
 def pivot_plot(multiple_results, coverage=True, color='b', label=None, fig=None):
     """
     Extract pivots at truth and mle.
@@ -400,13 +399,14 @@ def compute_pivots(multiple_results):
     if 'pvalue' in multiple_results.columns:
         pivots = multiple_results['pvalue']
         return {'selective pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
-    return {}
-
-def compute_naive_pivots(multiple_results):
     if 'naive_pvalues' in multiple_results.columns:
         pivots = multiple_results['naive_pvalues']
         return {'naive pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
+    if 'split_pvalues' in multiple_results.columns:
+        pivots = multiple_results['split_pvalues']
+        return {'split pvalues (mean, SD, type I):': (np.mean(pivots), np.std(pivots), np.mean(pivots < 0.05))}
     return {}
+
 
 def boot_clt_pivots(multiple_results):
     pivot_summary = {}
@@ -461,17 +461,18 @@ def compute_lengths(multiple_results):
 
     if 'ci_length' in multiple_results.columns:
         result['ci_length'] = np.mean(multiple_results['ci_length'])
+
     return result
 
 def compute_length_frac(multiple_results):
     result = {}
-    if 'ci_length_clt' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_clt' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         clt = multiple_results['ci_length_clt']
         split = split[~np.isnan(clt)]
         clt = clt[~np.isnan(clt)]
         result['split/clt'] = np.median(np.divide(split, clt))
-    if 'ci_length_boot' and 'ci_length_split' in multiple_results.columns:
+    if ('ci_length_boot' in multiple_results.columns) and ('ci_length_split' in multiple_results.columns):
         split = multiple_results['ci_length_split']
         boot = multiple_results['ci_length_boot']
         split = split[~np.isnan(boot)]
@@ -514,7 +515,6 @@ def summarize_all(multiple_results):
     result.update(compute_length_frac(multiple_results))
     result.update(compute_FDP(multiple_results))
     result.update(compute_power(multiple_results))
-    result.update(compute_naive_pivots(multiple_results))
     for i in result:
         print(i, result[i])
 

@@ -1,6 +1,6 @@
 from __future__ import print_function
 import numpy as np
-
+import pandas as pd
 import regreg.api as rr
 
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
@@ -21,14 +21,14 @@ from selection.randomized.query import (naive_pvalues, naive_confidence_interval
 @set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
 def test_intervals(s=0,
-                   n=200,
-                   p=10,
+                   n=300,
+                   p=50,
                    signal=7,
                    rho=0.,
                    lam_frac=6.,
                    ndraw=10000, 
                    burnin=2000, 
-                   bootstrap=True,
+                   bootstrap=False,
                    loss='gaussian',
                    intervals='old',
                    randomizer = 'laplace',
@@ -82,9 +82,14 @@ def test_intervals(s=0,
         active_set = np.nonzero(active_union)[0]
         true_vec = beta[active_union]
 
+        def sampler():
+            indices = np.random.choice(n, size=(n,), replace=True)
+            return indices
+
         target_sampler, target_observed = glm_target(loss,
                                                      active_union,
                                                      mv,
+                                                     sampler,
                                                      bootstrap=bootstrap)
 
         if intervals == 'old':
@@ -145,7 +150,7 @@ def test_intervals(s=0,
 
 def report_both(niter=10, **kwargs):
 
-    kwargs = {'s': 0, 'n': 500, 'p': 100, 'signal': 7, 'bootstrap': False, 'randomizer': 'gaussian'}
+    kwargs = {'s': 0, 'n': 300, 'p': 50, 'signal': 7, 'bootstrap': False, 'randomizer': 'gaussian'}
     intervals_report = reports.reports['test_intervals']
     CLT_runs = reports.collect_multiple_runs(intervals_report['test'],
                                              intervals_report['columns'],
@@ -167,6 +172,7 @@ def report_both(niter=10, **kwargs):
     fig = reports.pivot_plot_2in1(bootstrap_runs, color='g', label='Bootstrap', fig=fig)
     fig.savefig('intervals_pivots.pdf') # will have both bootstrap and CLT on plot
 
+
 def report(niter=50, **kwargs):
     kwargs = {'s': 0, 'n': 600, 'p': 100, 'signal': 7, 'bootstrap': False, 'randomizer':'gaussian',
                     'loss':'gaussian', 'intervals':'old'}
@@ -176,8 +182,14 @@ def report(niter=50, **kwargs):
                                              niter,
                                              reports.summarize_all,
                                              **kwargs)
-    fig = reports.pivot_plot_plus_naive(runs)
-    fig.suptitle('Selective vs naive p-values after group Lasso')
+    label = 'test_intervals'
+    pkl_label = ''.join([label, ".pkl"])
+    pdf_label = ''.join([label, ".pdf"])
+    runs.to_pickle(pkl_label)
+    runs_read = pd.read_pickle(pkl_label)
+
+    fig = reports.pivot_plot_plus_naive(runs_read)
+    fig.suptitle('Inference after group Lasso')
     fig.savefig('Group_lasso.pdf')
 
 
