@@ -1,13 +1,14 @@
 import functools # for bootstrap partial mapping
 
 import numpy as np
+from scipy.stats import norm as ndist
+
 from regreg.api import glm
 
 from .M_estimator import (restricted_Mest, M_estimator, M_estimator_split, M_estimator_epsilon_seq)
 from .greedy_step import greedy_score_step
 from .threshold_score import threshold_score
 
-from regreg.api import glm
 
 def pairs_bootstrap_glm(glm_loss,
                         active, 
@@ -16,7 +17,44 @@ def pairs_bootstrap_glm(glm_loss,
                         scaling=1.,
                         solve_args={'min_its':50, 'tol':1.e-10}):
     """
-    pairs bootstrap of (beta_hat_active, -grad_inactive(beta_hat_active))
+    Construct a non-parametric bootstrap sampler that 
+    samples the estimates ($\bar{\beta}_E^*$) of a generalized 
+    linear model (GLM) restricted to `active`
+    as well as, optionally, the inactive coordinates of the score of the 
+    GLM evaluated at the estimates ($\nabla \ell(\bar{\beta}_E)[-E]$) where
+    $\bar{\beta}_E$ is padded with zeros where necessary.
+    
+    Parameters
+    ----------
+
+    glm_loss : regreg.smooth.glm.glm
+        The loss of the generalized linear model.
+
+    active : np.bool
+        Boolean indexing array
+
+    beta_full : np.float (optional)
+        Solution to the restricted problem, zero except where active is nonzero.
+
+    inactive : np.bool (optional)
+        Boolean indexing array
+
+    scaling : float
+        Scaling to keep entries of roughly constant order. Active entries
+        are multiplied by sqrt(scaling) inactive ones are divided
+        by sqrt(scaling).
+
+    solve_args : dict
+        Arguments passed to solver of restricted problem (`restricted_Mest`) if 
+        beta_full is None.
+
+    Returns
+    -------
+
+    bootstrap_sampler : callable
+        A callable object that takes a sample of indices and returns
+        the corresponding bootstrap sample.
+
     """
     X, Y = glm_loss.data
 
@@ -47,7 +85,7 @@ def pairs_bootstrap_glm(glm_loss,
 
     nactive = active.sum()
     if inactive is not None:
-        X_full = np.hstack([X_active,X_inactive])
+        X_full = np.hstack([X_active, X_inactive])
         beta_overall = np.zeros(X_full.shape[1])
         beta_overall[:nactive] = beta_active
     else:
@@ -81,13 +119,103 @@ def pairs_bootstrap_glm(glm_loss,
 
     return functools.partial(_boot_score, X_full, Y, ntotal, _bootQinv, _bootI, nactive, _sqrt_scaling, beta_overall), observed
 
+def pairs_inactive_score_glm(glm_loss, 
+                             active, 
+                             beta_active, 
+                             scaling=1.,
+                             solve_args={'min_its':50, 'tol':1.e-10}):
+
+    """
+    Construct a non-parametric bootstrap sampler that 
+    samples the inactive coordinates of the score of the 
+    GLM evaluated at the estimates ($\nabla \ell(\bar{\beta}_E)[-E]$) where
+    $\bar{\beta}_E$ is padded with zeros where necessary.
+    
+    Parameters
+    ----------
+
+    glm_loss : regreg.smooth.glm.glm
+        The loss of the generalized linear model.
+
+    active : np.bool
+        Boolean indexing array
+
+    beta_active : np.float (optional)
+        Solution to the restricted problem.
+
+    scaling : float
+        Scaling to keep entries of roughly constant order. Active entries
+        are multiplied by sqrt(scaling) inactive ones are divided
+        by sqrt(scaling).
+
+    solve_args : dict
+        Arguments passed to solver of restricted problem (`restricted_Mest`) if 
+        beta_full is None.
+
+    Returns
+    -------
+
+    bootstrap_sampler : callable
+        A callable object that takes a sample of indices and returns
+        the corresponding bootstrap sample.
+
+    """
+
+    inactive = ~active
+    beta_full = np.zeros(glm_loss.shape)
+    beta_full[active] = beta_active
+
+    _full_boot_score = pairs_bootstrap_glm(glm_loss, 
+                                           active, 
+                                           beta_full=beta_full,
+                                           inactive=inactive,
+                                           scaling=scaling,
+                                           solve_args=solve_args)[0]
+    nactive = active.sum()
+
+    def _boot_score(indices):
+        return _full_boot_score(indices)[nactive:]
+
+    return _boot_score
+
+
 def pairs_bootstrap_score(glm_loss,
                           active, 
                           beta_active=None, 
                           solve_args={'min_its':50, 'tol':1.e-10}):
     """
-    pairs bootstrap of (beta_hat_active, -grad_inactive(beta_hat_active))
+    Construct a non-parametric bootstrap sampler that 
+    samples the score ($\nabla \ell(\bar{\beta}_E)) ofa generalized 
+    linear model (GLM) restricted to `active`
+    as well as, optionally, the inactive coordinates of the score of the 
+    GLM evaluated at the estimates ($\nabla \ell(\bar{\beta}_E)[-E]$) where
+    $\bar{\beta}_E$ is padded with zeros where necessary.
+    
+    Parameters
+    ----------
+
+    glm_loss : regreg.smooth.glm.glm
+        The loss of the generalized linear model.
+
+    active : np.bool
+        Boolean indexing array
+
+    beta_active : np.float (optional)
+        Solution to the restricted problem. 
+
+    solve_args : dict
+        Arguments passed to solver of restricted problem (`restricted_Mest`) if 
+        beta_full is None.
+
+    Returns
+    -------
+
+    bootstrap_sampler : callable
+        A callable object that takes a sample of indices and returns
+        the corresponding bootstrap sample.
+
     """
+
     X, Y = glm_loss.data
 
     if beta_active is None:
@@ -112,7 +240,39 @@ def set_alpha_matrix(glm_loss,
                      inactive=None,
                      scaling=1.,
                      solve_args={'min_its': 50, 'tol': 1.e-10}):
+    """
+    DESCRIBE WHAT THIS DOES
 
+    Parameters
+    ----------
+
+    glm_loss : regreg.smooth.glm.glm
+        The loss of the generalized linear model.
+
+    active : np.bool
+        Boolean indexing array
+
+    beta_full : np.float (optional)
+        Solution to the restricted problem, zero except where active is nonzero.
+
+    inactive : np.bool (optional)
+        Boolean indexing array
+
+    scaling : float
+        Scaling to keep entries of roughly constant order. Active entries
+        are multiplied by sqrt(scaling) inactive ones are divided
+        by sqrt(scaling).
+
+    solve_args : dict
+        Arguments passed to solver of restricted problem (`restricted_Mest`) if 
+        beta_full is None.
+
+    Returns
+    -------
+
+    ???????
+
+    """
     X, Y = glm_loss.data
 
     if beta_full is None:
@@ -153,6 +313,40 @@ def _parametric_cov_glm(glm_loss,
                         beta_full=None,
                         inactive=None,
                         solve_args={'min_its': 50, 'tol': 1.e-10}):
+    """
+    Compute parametric covariance of
+    the estimates ($\bar{\beta}_E^*$) of a generalized 
+    linear model (GLM) restricted to `active`
+    as well as, optionally, the inactive coordinates of the score of the 
+    GLM evaluated at the estimates ($\nabla \ell(\bar{\beta}_E)[-E]$) where
+    $\bar{\beta}_E$ is padded with zeros where necessary.
+
+    Parameters
+    ----------
+
+    glm_loss : regreg.smooth.glm.glm
+        The loss of the generalized linear model.
+
+    active : np.bool
+        Boolean indexing array
+
+    beta_full : np.float (optional)
+        Solution to the restricted problem, zero except where active is nonzero.
+
+    inactive : np.bool (optional)
+        Boolean indexing array
+
+    solve_args : dict
+        Arguments passed to solver of restricted problem (`restricted_Mest`) if 
+        beta_full is None.
+
+    Returns
+    -------
+
+    Sigma : np.float
+        Covariance matrix.
+
+    """
     X, Y = glm_loss.data
     n, p = X.shape
 
@@ -172,49 +366,28 @@ def _parametric_cov_glm(glm_loss,
         X_inactive = X[:, inactive]
         ntotal += inactive.sum()
 
-    _bootW = np.diag(glm_loss.saturated_loss.hessian(X_active.dot(beta_active)))
-    _bootQ = X_active.T.dot(_bootW.dot(X_active))
-    _bootQinv = np.linalg.inv(_bootQ)
+    _W = np.diag(glm_loss.saturated_loss.hessian(X_active.dot(beta_active)))
+    _Q = X_active.T.dot(_W.dot(X_active))
+    _Qinv = np.linalg.inv(_Q)
     if inactive is not None:
-        _bootC = X_inactive.T.dot(_bootW.dot(X_active))
-        _bootI = _bootC.dot(_bootQinv)
+        _C = X_inactive.T.dot(_W.dot(X_active))
+        _I = _C.dot(_Qinv)
 
     nactive = active.sum()
 
     mat = np.zeros((p, n))
-    mat[:nactive, :] = _bootQinv.dot(X_active.T)
-    if ntotal>nactive:
-        mat1 = np.dot(np.dot(_bootW, X_active), np.dot(_bootQinv, X_active.T))
+    mat[:nactive, :] = _Qinv.dot(X_active.T)
+    if ntotal > nactive:
+        mat1 = np.dot(np.dot(_W, X_active), np.dot(_Qinv, X_active.T))
         mat[nactive:, :] = X[:, inactive].T.dot(np.identity(n) - mat1)
 
-    Sigma_full = np.dot(mat, np.dot(_bootW, mat.T))
+    Sigma_full = np.dot(mat, np.dot(_W, mat.T))
     return Sigma_full
-
-def pairs_inactive_score_glm(glm_loss, active, beta_active, scaling=1.):
-
-    """
-    Bootstrap inactive score at \bar{\beta}_E
-
-    Will be used with forward stepwise.
-    """
-    inactive = ~active
-    beta_full = np.zeros(glm_loss.shape)
-    beta_full[active] = beta_active
-
-    _full_boot_score = pairs_bootstrap_glm(glm_loss, 
-                                           active, 
-                                           beta_full=beta_full,
-                                           inactive=inactive,
-                                           scaling=scaling)[0]
-    nactive = active.sum()
-    def _boot_score(indices):
-        return _full_boot_score(indices)[nactive:]
-
-    return _boot_score
 
 def target(loss, 
            active, 
            queries,
+           sampler,
            subset=None, 
            bootstrap=False,
            solve_args={'min_its':50, 'tol':1.e-10},
@@ -291,7 +464,7 @@ def target(loss,
     target_observed = _subsetter(boot_target_observed)
 
     if parametric==False:
-        form_covariances = glm_nonparametric_bootstrap(n, n)
+        form_covariances = glm_nonparametric_bootstrap(sampler)
     else:
         form_covariances = glm_parametric_covariance(loss)
 
@@ -324,6 +497,8 @@ def target(loss,
 
     return target_sampler, target_observed
 
+#### Subclasses of different randomized views
+
 class glm_group_lasso(M_estimator):
 
     def setup_sampler(self, scaling=1., solve_args={'min_its':50, 'tol':1.e-10}):
@@ -335,6 +510,24 @@ class glm_group_lasso(M_estimator):
                                               inactive=~self.selection_variable['variables'])[0]
 
         return bootstrap_score
+
+class glm_group_lasso_new_data(M_estimator):
+
+    def __init__(self, new_loss, loss, epsilon, penalty, randomization, solve_args={'min_its':50, 'tol':1.e-10}):
+        M_estimator.__init__(self, loss, epsilon, penalty, randomization, solve_args={'min_its':50, 'tol':1.e-10})
+        self.new_loss = new_loss
+
+    def setup_sampler(self, scaling=1., solve_args={'min_its':50, 'tol':1.e-10}):
+        M_estimator.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+
+        bootstrap_score = pairs_bootstrap_glm(self.new_loss,
+                                              self.selection_variable['variables'],
+                                              beta_full=self._beta_full,
+                                              inactive=~self.selection_variable['variables'])[0]
+
+        return bootstrap_score
+
+
 
 class split_glm_group_lasso(M_estimator_split):
 
@@ -417,12 +610,9 @@ class fixedX_group_lasso(M_estimator):
 def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
     """
     m out of n bootstrap
-
     returns estimates of covariance matrices: boot_target with itself,
     and the blocks of (boot_target, boot_other) for other in cross_terms
-
     """
-
     _mean_target = 0.
     if len(cross_terms) > 0:
         _mean_cross = [0.] * len(cross_terms)
@@ -432,14 +622,16 @@ def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
     for j in range(nsample):
         #if j % 100==0:
         #    print(j)
-        indices = sampler()
+        indices_list = sampler()
+        indices = indices_list[0]
         _boot_target = boot_target(indices)
 
         _mean_target += _boot_target
         _outer_target += np.multiply.outer(_boot_target, _boot_target)
 
         for i, _boot in enumerate(cross_terms):
-            _boot_sample = _boot(indices)
+            cross_indices = indices_list[i+1]
+            _boot_sample = _boot(cross_indices)
             _mean_cross[i] += _boot_sample
             _outer_cross[i] += np.multiply.outer(_boot_target, _boot_sample)
 
@@ -455,11 +647,19 @@ def bootstrap_cov(sampler, boot_target, cross_terms=(), nsample=2000):
         return _cov_target
     return [_cov_target] + [_o - np.multiply.outer(_mean_target, _m) for _m, _o in zip(_mean_cross, _outer_cross)]
 
-def glm_nonparametric_bootstrap(m, n):
+
+def glm_nonparametric_bootstrap(sampler):
     """
     The m out of n bootstrap.
     """
-    return functools.partial(bootstrap_cov, lambda: np.random.choice(n, size=(m,), replace=True))
+    #def sampler():
+    #    indices1 = np.random.choice(n/2, size=(n/2,), replace=True)
+    #    indices2 = n/2+np.random.choice(n / 2, size=(n / 2,), replace=True)
+    #    return(np.concatenate((indices1,indices2), axis=0))
+
+    return functools.partial(bootstrap_cov, sampler)
+
+    #return functools.partial(bootstrap_cov, lambda: np.random.choice(n, size=(m,), replace=True))
 
 def resid_bootstrap(gaussian_loss,
                     active,
@@ -504,8 +704,11 @@ def resid_bootstrap(gaussian_loss,
 
     return _boot_score, observed
 
-def parametric_cov(glm_loss, target_with_linear_func, cross_terms=(),
+def parametric_cov(glm_loss, 
+                   target_with_linear_func, 
+                   cross_terms=(),
                    solve_args={'min_its':50, 'tol':1.e-10}):
+
     # cross_terms are different active sets
 
     target, linear_func = target_with_linear_func
@@ -542,39 +745,36 @@ def parametric_cov(glm_loss, target_with_linear_func, cross_terms=(),
 
 def glm_parametric_covariance(glm_loss, solve_args={'min_its':50, 'tol':1.e-10}):
     """
-    The m out of n bootstrap.
+    A constructor for parametric covariance
     """
     return functools.partial(parametric_cov, glm_loss, solve_args=solve_args)
 
+def standard_split_ci(glm_loss, X, y, active, leftout_indices, alpha=0.1):
+    """
+    Data plitting confidence intervals via bootstrap.
+    """
+    loss = glm_loss(X[leftout_indices,], y[leftout_indices])
 
-def standard_ci(glm_loss, X, y , active, leftout_indices, alpha=0.1):
-
-    import regreg.api as rr
-
-    loss = glm_loss(X[leftout_indices, ], y[leftout_indices])
     boot_target, target_observed = pairs_bootstrap_glm(loss, active)
     nactive = np.sum(active)
-    size= np.sum(leftout_indices)
+    size = np.sum(leftout_indices)
+
     observed = target_observed[:nactive]
     boot_target_restricted = lambda indices: boot_target(indices)[:nactive]
-    sampler = lambda: np.random.choice(size, size=(size,), replace=True)
+    def sampler():
+        indices = np.random.choice(size, size=(size,), replace=True)
+        return [indices]
+    #sampler = lambda: np.random.choice(size, size=(size,), replace=True)
     target_cov = bootstrap_cov(sampler, boot_target_restricted)
 
-    from scipy.stats import norm as ndist
     quantile = - ndist.ppf(alpha / float(2))
-    LU = np.zeros((2, target_observed.shape[0]))
+    LU = np.zeros((2, nactive))
+    pvalues = np.zeros(nactive)
     for j in range(observed.shape[0]):
         sigma = np.sqrt(target_cov[j, j])
         LU[0, j] = observed[j] - sigma * quantile
         LU[1, j] = observed[j] + sigma * quantile
-    return LU.T
+        pval = ndist.cdf(observed[j] / sigma)
+        pvalues[j] = 2 * min(pval, 1 - pval)
+    return LU.T, pvalues
 
-
-def standard_ci_sm(X, y, active, leftout_indices, alpha=0.1):
-    XE = X[:, active]
-    X2, y2 = XE[leftout_indices, :], y[leftout_indices]
-    import statsmodels.discrete.discrete_model as sm
-    logit = sm.Logit(y2, X2)
-    result = logit.fit(disp=0)
-    LU = result.conf_int(alpha=alpha)
-    return LU.T

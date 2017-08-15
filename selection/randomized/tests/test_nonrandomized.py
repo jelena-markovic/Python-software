@@ -10,9 +10,7 @@ import selection.tests.reports as reports
 from selection.tests.decorators import wait_for_return_value, register_report, set_sampling_params_iftrue
 from selection.tests.flags import SMALL_SAMPLES, SET_SEED
 
-
 @register_report(['pivot', 'covered_clt'])
-@set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @wait_for_return_value()
 def test_nonrandomized(s=0,
                        n=200,
@@ -95,5 +93,5 @@ def report(niter=50, **kwargs):
     fig.savefig('nonrandomized_pivots.pdf') # will have both bootstrap and CLT on plot
 
 
-if __name__=='__main__':
+def main():
     report()
