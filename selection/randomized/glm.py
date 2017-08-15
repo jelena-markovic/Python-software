@@ -5,7 +5,7 @@ from scipy.stats import norm as ndist
 
 from regreg.api import glm
 
-from .M_estimator import restricted_Mest, M_estimator, M_estimator_split
+from .M_estimator import (restricted_Mest, M_estimator, M_estimator_split, M_estimator_epsilon_seq)
 from .greedy_step import greedy_score_step
 from .threshold_score import threshold_score
 
@@ -549,6 +549,18 @@ class glm_group_lasso_parametric(M_estimator):
     def setup_sampler(self):
         M_estimator.setup_sampler(self)
         return self.selection_variable['variables']
+
+class glm_group_lasso_epsilon_seq(M_estimator_epsilon_seq):
+
+    def setup_sampler(self, scaling=1., solve_args={'min_its': 50, 'tol': 1.e-10}):
+        M_estimator.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+
+        bootstrap_score = pairs_bootstrap_glm(self.loss,
+                                              self.selection_variable['variables'],
+                                              beta_full=self._beta_full,
+                                              inactive=~self.selection_variable['variables'])[0]
+
+        return bootstrap_score
 
 
 class glm_greedy_step(greedy_score_step, glm):

@@ -23,8 +23,7 @@ def _design(n, p, rho, equicorrelated):
 def gaussian_instance(n=100, p=200, s=7, sigma=5, rho=0.3, signal=7,
                       random_signs=False, df=np.inf,
                       scale=True, center=True,
-                      equicorrelated=True):
-                      
+                      equicorrelated=True):                      
     """
     A testing instance for the LASSO.
     If equicorrelated is True design is equi-correlated in the population,

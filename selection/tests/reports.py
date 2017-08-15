@@ -286,6 +286,7 @@ def pivot_plot_plus_naive(multiple_results, coverage=True, color='b', label=None
     #print(color)
 
     ax.plot(G, F_pivot, '-o', c=color, lw=2, label="Lee et al. p-values")
+
     ax.plot([0, 1], [0, 1], 'k-', lw=2)
 
     if 'naive_pvalues' in multiple_results.columns:

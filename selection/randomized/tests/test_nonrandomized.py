@@ -14,7 +14,7 @@ from selection.tests.flags import SMALL_SAMPLES, SET_SEED
 @wait_for_return_value()
 def test_nonrandomized(s=0,
                        n=200,
-                       p=10,
+                       p=20,
                        signal=7,
                        rho=0,
                        lam_frac = 0.6,
@@ -80,9 +80,7 @@ def test_nonrandomized(s=0,
         return pivots, covered
 
 
-
 def report(niter=50, **kwargs):
-
     kwargs = {'s': 0, 'n': 300, 'p': 10, 'signal': 7}
     split_report = reports.reports['test_nonrandomized']
     screened_results = reports.collect_multiple_runs(split_report['test'],

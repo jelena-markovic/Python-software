@@ -4,6 +4,7 @@ import regreg.affine as ra
 
 from .query import query
 from .randomization import split
+from scipy.stats import ncx2
 
 class M_estimator(query):
 
@@ -104,7 +105,6 @@ class M_estimator(query):
 
         self.active_penalty = active_penalty
         # solve the restricted problem
-
         self._overall = active + unpenalized > 0
         self._inactive = ~self._overall
         self._unpenalized = unpenalized
@@ -112,6 +112,7 @@ class M_estimator(query):
         self.active_directions_list = active_directions_list ## added for group lasso
         self._active_directions = np.array(active_directions).T
         self._active_groups = np.array(active_groups, np.bool)
+        #print("active groups", self._active_groups)
         self._unpenalized_groups = np.array(unpenalized_groups, np.bool)
 
         self.selection_variable = {'groups':self._active_groups, 
@@ -131,11 +132,9 @@ class M_estimator(query):
                                                   initial_subgrad], axis=0)
 
         # set the _solved bit
-
         self._solved = True
 
         # Now setup the pieces for linear decomposition
-
         (loss,
          epsilon,
          penalty,
@@ -258,7 +257,6 @@ class M_estimator(query):
         new_groups = penalty.groups[inactive]
         new_weights = dict([(g, penalty.weights[g] / _sqrt_scaling) for g in penalty.weights.keys() if g in np.unique(new_groups)])
 
-
         # we form a dual group lasso object
         # to do the projection
 
@@ -326,7 +324,6 @@ class M_estimator(query):
 
 
 
-
     def setup_sampler(self, scaling=1, solve_args={'min_its':20, 'tol':1.e-10}):
         pass
 
@@ -378,39 +375,39 @@ class M_estimator(query):
         condition_inactive_variables = np.zeros_like(self._inactive, dtype=bool)
         moving_inactive_groups = np.zeros_like(groups, dtype=bool)
         moving_inactive_variables = np.zeros_like(self._inactive, dtype=bool)
-        self._inactive_groups = ~(self._active_groups+self._unpenalized)
+
+        self._inactive_groups = ~(self._active_groups+self._unpenalized_groups)
 
         inactive_marginal_groups = np.zeros_like(self._inactive, dtype=bool)
+        inactive_marginal_variables = np.zeros_like(self._inactive, dtype=bool)
         limits_marginal_groups = np.zeros_like(self._inactive)
 
         for i, g in enumerate(groups):
+            group = (self.penalty.groups == g)
             if (self._inactive_groups[i]) and conditioning_groups[i]:
-                group = self.penalty.groups == g
                 condition_inactive_groups[i] = True
                 condition_inactive_variables[group] = True
             elif (self._inactive_groups[i]) and (~conditioning_groups[i]) and (~marginalizing_groups[i]):
-                group = self.penalty.groups == g
                 moving_inactive_groups[i] = True
                 moving_inactive_variables[group] = True
             if (self._inactive_groups[i]) and marginalizing_groups[i]:
-                group = self.penalty.groups == g
                 inactive_marginal_groups[i] = True
                 limits_marginal_groups[i] = self.penalty.weights[g]
+                inactive_marginal_variables[group] = True
 
         if inactive_marginal_groups is not None:
             if inactive_marginal_groups.sum()>0:
                 self._marginalize_subgradient = True
 
         self.inactive_marginal_groups = inactive_marginal_groups
+        self.inactive_marginal_variables = inactive_marginal_variables
         self.limits_marginal_groups = limits_marginal_groups
-        #if self.inactive_marginal_groups.sum()==0:
-        #    self._marginalize_subgradient=False
-                #_opt_affine_term[group] = active_directions[:, idx][group] * penalty.weights[g]
-                #idx += 1
-        #self.condition_inactive_groups = condition_inactive_groups
+
         opt_linear, opt_offset = self.opt_transform
 
-        new_linear = np.zeros((opt_linear.shape[0], self._active_groups.sum()+self._unpenalized_groups.sum()+moving_inactive_variables.sum()))
+        # setting new_linear matrix for the optimization variables
+        new_linear = np.zeros((opt_linear.shape[0], self._active_groups.sum()
+                               +self._unpenalized_groups.sum()+moving_inactive_variables.sum()))
         new_linear[:,self.scaling_slice] = opt_linear[:, self.scaling_slice]
         new_linear[:, self.unpenalized_slice] = opt_linear[:, self.unpenalized_slice]
 
@@ -422,17 +419,20 @@ class M_estimator(query):
         for _i, _s in zip(inactive_moving_idx, subgrad_idx):
             new_linear[_i, _s] = 1.
 
-        observed_opt_state = self.observed_opt_state[:(self._active_groups.sum()+self._unpenalized_groups.sum()+moving_inactive_variables.sum())]
+        # setting new observed_opt_state to include only the moving inactive subgradient
+        observed_opt_state = self.observed_opt_state[:(self._active_groups.sum()
+                                                +self._unpenalized_groups.sum()+moving_inactive_variables.sum())]
         observed_opt_state[subgrad_slice] = self.initial_subgrad[moving_inactive_variables]
-
         self.observed_opt_state = observed_opt_state
 
-        condition_linear = np.zeros((opt_linear.shape[0], self._active_groups.sum()+self._unpenalized_groups.sum()+condition_inactive_variables.sum()))
+        # setting new_offset
+        condition_linear = np.zeros((opt_linear.shape[0], self._active_groups.sum()
+                                     +self._unpenalized_groups.sum()+condition_inactive_variables.sum()))
         inactive_condition_idx = np.nonzero(condition_inactive_variables)[0]
         subgrad_condition_idx = range(self._active_groups.sum() + self._unpenalized.sum(),
                             self._active_groups.sum() + self._unpenalized.sum() + condition_inactive_variables.sum())
         subgrad_condition_slice = slice(self._active_groups.sum() + self._unpenalized.sum(),
-                              self._active_groups.sum() + self._unpenalized.sum() + condition_inactive_variables.sum())
+                            self._active_groups.sum() + self._unpenalized.sum() + condition_inactive_variables.sum())
         for _i, _s in zip(inactive_condition_idx, subgrad_condition_idx):
             condition_linear[_i, _s] = 1.
 
@@ -447,9 +447,6 @@ class M_estimator(query):
         self.selection_variable['subgradient'] = self.observed_opt_state[self.subgrad_slice]
 
         # reset variables
-        #self.observed_opt_state = np.concatenate((self.observed_opt_state[self.scaling_slice], subgrad_observed[~condition_inactive_variables]), 0)
-        #self.scaling_slice = slice(None, None, None)
-        #self.subgrad_slice = np.zeros(new_linear.shape[1], np.bool)
         self.num_opt_var = new_linear.shape[1]
 
 
@@ -478,6 +475,42 @@ class M_estimator(query):
         self.num_opt_var = new_linear.shape[1]
 
 
+    def construct_weights_groups(self, full_state):
+        """
+            marginalizing over the inactive sub-gradients for group Lasso
+        """
+
+        if not self._setup:
+            raise ValueError('setup_sampler should be called before using this function')
+
+        if self._marginalize_subgradient and (self.inactive_marginal_groups.sum() > 0):
+            p = self.loss.shape[0]
+            weights = np.zeros(p)
+
+            def fraction(mu_h, lambda_h, df, tau):
+                nc = np.linalg.norm(mu_h) ** 2 / (tau**2)
+                arg = lambda_h**2 / (tau**2)
+                F = ncx2.cdf(arg, df, nc)
+                F2 = ncx2.cdf(arg, df + 2, nc)
+                return np.true_divide(-F + F2, F)
+
+            groups = np.unique(self.penalty.groups)
+            for i, g in enumerate(groups):
+                if self.inactive_marginal_groups[i]:
+                    group_vars = (self.penalty.groups == g)
+                    mu_h = full_state[group_vars]
+                    lambda_h = self.limits_marginal_groups[i]
+                    weights[group_vars] = -fraction(mu_h, lambda_h, df=np.sum(group_vars), tau=self.randomization.sigma)
+
+            weights[~self.inactive_marginal_variables] = \
+                self.randomization._derivative_log_density(full_state)[~self.inactive_marginal_variables]
+
+            return -weights
+        else:
+            #print(full_state)
+            return query.construct_weights(self, full_state)
+
+
     def construct_weights(self, full_state):
         """
             marginalizing over the sub-gradient
@@ -494,7 +527,6 @@ class M_estimator(query):
                 full_state_plus = full_state+np.multiply(self.limits_marginal_groups, np.array(self.inactive_marginal_groups, np.float))
                 full_state_minus = full_state-np.multiply(self.limits_marginal_groups, np.array(self.inactive_marginal_groups, np.float))
 
-
             def fraction(full_state_plus, full_state_minus, inactive_marginal_groups):
                 return (np.divide(self.randomization._pdf(full_state_plus) - self.randomization._pdf(full_state_minus),
                        self.randomization._cdf(full_state_plus) - self.randomization._cdf(full_state_minus)))[inactive_marginal_groups]
@@ -506,6 +538,7 @@ class M_estimator(query):
             return -weights
         else:
             return query.construct_weights(self, full_state)
+
 
 def restricted_Mest(Mest_loss, active, solve_args={'min_its':50, 'tol':1.e-10}):
     """
@@ -612,3 +645,34 @@ class M_estimator_split(M_estimator):
                                                 first_moment)
 
         self.randomization.set_covariance(cov)
+
+
+class M_estimator_epsilon_seq(M_estimator):
+
+    def __init__(self, loss, epsilon_seq, penalty, randomization, solve_args={'min_its': 50, 'tol': 1.e-10}):
+
+        self.epsilon_seq = epsilon_seq
+        M_estimator.__init__(self, loss, 0, penalty, randomization, solve_args=solve_args)
+
+
+    def solve(self):
+        M_estimator.solve(self)
+        (_opt_linear_term, _opt_affine_term) = self.opt_transform
+
+        if len(self._active_directions)>0:
+            _opt_linear_term[:,self.scaling_slice] += np.diag(self.epsilon_seq).dot(self._active_directions)
+
+        if self._unpenalized.sum()>0:
+            unpenalized_directions = np.identity(self.ndim)[:, self._unpenalized]
+            _opt_linear_term[:, self.unpenalized_slice] += np.diag(self.epsilon_seq).dot(unpenalized_directions)
+
+        active = np.zeros(self.loss.shape, np.bool)
+        groups = np.unique(self.penalty.groups)
+        for i, g in enumerate(groups):
+            group = self.penalty.groups == g
+            if self._active_groups[i]:
+                active[group] = True
+
+        self.Q += (np.diag(self.epsilon_seq))[:, active][active, :]
+        self.Qinv = np.linalg.inv(self.Q)
+        self.form_VQLambda()

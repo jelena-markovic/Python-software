@@ -25,29 +25,28 @@ from selection.api import (randomization,
 from selection.randomized.query import (naive_pvalues, naive_confidence_intervals)
 
 from selection.randomized.glm import glm_parametric_covariance, glm_nonparametric_bootstrap, restricted_Mest, set_alpha_matrix
-import pandas as pd
 
 @register_report(['truth', 'covered_clt', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive'])
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_marginalize(s=4,
-                     n=600,
-                     p=200,
-                     rho=0.,
-                     signal=3.5,
-                     lam_frac = 2.5,
-                     ndraw=10000,
-                     burnin=2000,
-                     loss='gaussian',
-                     randomizer = 'gaussian',
-                     randomizer_scale = 1.,
-                     nviews=3,
-                     scalings=True,
-                     subgrad =True,
-                     parametric=False,
-                     intervals='old'):
+def test_marginalize(s=0,
+                    n=100,
+                    p=20,
+                    rho=0.,
+                    signal=3.5,
+                    lam_frac = 2.,
+                    ndraw=10000,
+                    burnin=2000,
+                    loss='gaussian',
+                    randomizer = 'gaussian',
+                    randomizer_scale = 1.,
+                    nviews=1,
+                    scalings=False,
+                    subgrad = True,
+                    parametric=False,
+                    intervals='old'):
     print(n,p,s)
 
     if randomizer == 'laplace':
@@ -70,7 +69,10 @@ def test_marginalize(s=4,
 
     W = lam_frac*np.ones(p)*lam
     #W[0] = 0 # use at least some unpenalized
-    penalty = rr.group_lasso(np.arange(p),
+    ngroups = 5
+    groups = np.concatenate([np.arange(ngroups) for i in range(p / ngroups)])
+
+    penalty = rr.group_lasso(groups,
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
     views = []
@@ -99,20 +101,13 @@ def test_marginalize(s=4,
         if nactive==s:
             return None
 
-        # BUG: if this scalings code is moveed after the decompose_subgradient,
-        # code seems to run fine
-
         if scalings: # try condition on some scalings
             for i in range(nviews):
+                views[i].condition_on_subgradient()
                 views[i].condition_on_scalings()
         if subgrad:
             for i in range(nviews):
-               conditioning_groups = np.zeros(p,dtype=bool)
-               conditioning_groups[:(p/2)] = True
-               marginalizing_groups = np.zeros(p, dtype=bool)
-               marginalizing_groups[(p/2):] = True
-               views[i].decompose_subgradient(conditioning_groups=conditioning_groups, 
-                                              marginalizing_groups=marginalizing_groups)
+               views[i].decompose_subgradient(conditioning_groups=np.zeros(p, dtype=bool), marginalizing_groups=np.ones(p, bool))
 
         active_set = np.nonzero(active_union)[0]
         target_sampler, target_observed = glm_target(loss,
@@ -173,7 +168,6 @@ def test_marginalize(s=4,
 
         return pivots, covered, ci_length, naive_pvals, covered_naive, ci_length_naive
 
-
 def report(niter=50, **kwargs):
 
     condition_report = reports.reports['test_marginalize']
@@ -185,7 +179,10 @@ def report(niter=50, **kwargs):
 
     fig = reports.pivot_plot_plus_naive(runs)
     #fig = reports.pivot_plot_2in1(runs,color='b', label='marginalized subgradient')
-    fig.suptitle('Randomized Lasso marginalized subgradient')
+    fig.suptitle('Randomized group Lasso marginalized subgradient')
     fig.savefig('marginalized_subgrad_pivots.pdf')
 
 
+if __name__ == '__main__':
+    np.random.seed(1)
+    report()
