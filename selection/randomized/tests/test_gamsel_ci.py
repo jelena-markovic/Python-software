@@ -16,6 +16,7 @@ import selection.tests.reports as reports
 from selection.api import (randomization,
                            glm_group_lasso,
                            glm_group_lasso_epsilon_seq,
+                           glm_gamsel,
                            pairs_bootstrap_glm,
                            multiple_queries,
                            discrete_family,
@@ -66,6 +67,16 @@ robjects.r('''
 }
 ''')
 
+def create_map(p_full, p, degrees):
+    index_map = np.zeros(p_full)
+    cumsum_degrees=1
+    for i in range(p):
+        index_map[i+1] = cumsum_degrees
+        cumsum_degrees += degrees[i]
+    for i in range(p+1,p_full):
+        index_map[i]=i-p
+    return index_map
+
 
 def setup_gamsel(s, n, p, rho, signal, lam_frac,
                  degree, df, gamma):
@@ -99,6 +110,9 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
 
     lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
     loss = rr.glm.gaussian(X_joint, y)
+    keep_covariates = np.ones(p_joint, np.bool)
+    keep_covariates[1:(p+1)]=0
+    restricted_loss = rr.glm.gaussian(X_joint[:,keep_covariates],y)
 
     epsilon = 1. / np.sqrt(n)
     psi_seq_extended = []
@@ -121,7 +135,11 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
     print("groups", set(groups))
     print("weights", weights)
     penalty = rr.group_lasso(groups, weights=weights, lagrange=1.)
-    return loss, epsilon_seq, penalty, beta, beta_joint
+    index_map = create_map(p_joint,p, degrees)
+    print("degrees", degrees)
+    print("index map", index_map)
+    return loss, restricted_loss, keep_covariates, index_map, \
+           epsilon_seq, penalty, beta, beta_joint
 
 
 def coverage(LU, check_screen, true_vec):
@@ -168,8 +186,9 @@ def test_gamsel_ci(s=0,
     print(n,p,s)
 
     if loss=="gaussian":
-        loss, epsilon_seq, penalty, beta, beta_joint = setup_gamsel(s=s, n=n, p=p, rho=rho, signal=signal,
-                                                              lam_frac=lam_frac, degree=degree, df=df, gamma=gamma)
+        loss, restricted_loss, keep_covariates, index_map, epsilon_seq, penalty, beta, beta_joint \
+            = setup_gamsel(s=s, n=n, p=p, rho=rho, signal=signal,
+                           lam_frac=lam_frac, degree=degree, df=df, gamma=gamma)
 
     elif loss=="logistic":
         X, y, beta, _ = logistic_instance(n=n, p=p, s=s, rho=rho, signal=signal)
@@ -189,7 +208,7 @@ def test_gamsel_ci(s=0,
     views = []
     for i in range(nviews):
         if parametric==False:
-            views.append(glm_group_lasso_epsilon_seq(loss, epsilon_seq, penalty, randomizer))
+            views.append(glm_gamsel(loss, restricted_loss, keep_covariates, index_map, epsilon_seq, penalty, randomizer))
         else:
             views.append(glm_group_lasso_parametric(loss, epsilon_seq, penalty, randomizer))
 
@@ -224,8 +243,8 @@ def test_gamsel_ci(s=0,
                                               marginalizing_groups=np.ones(p_joint, bool))
 
         active_set = np.nonzero(active_union)[0]
-        target_sampler, target_observed = glm_target(loss,
-                                                     active_union,
+        target_sampler, target_observed = glm_target(views[0].restricted_loss,
+                                                     views[0]._restricted_overall,
                                                      queries,
                                                      bootstrap=False,
                                                      parametric=parametric)

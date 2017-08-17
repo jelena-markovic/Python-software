@@ -2,6 +2,7 @@ from .query import multiple_queries, query
 
 from .glm import (glm_group_lasso,
                   glm_group_lasso_epsilon_seq,
+                  glm_gamsel,
                   split_glm_group_lasso,
                   glm_group_lasso_parametric,
                   glm_greedy_step, 

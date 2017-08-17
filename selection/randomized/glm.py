@@ -3,7 +3,8 @@ import functools # for bootstrap partial mapping
 import numpy as np
 from regreg.api import glm
 
-from .M_estimator import (restricted_Mest, M_estimator, M_estimator_split, M_estimator_epsilon_seq)
+from .M_estimator import (restricted_Mest, M_estimator, M_estimator_split,
+                          M_estimator_epsilon_seq, M_estimator_gamsel)
 from .greedy_step import greedy_score_step
 from .threshold_score import threshold_score
 
@@ -80,6 +81,7 @@ def pairs_bootstrap_glm(glm_loss,
     observed[nactive:] /= _sqrt_scaling
 
     return functools.partial(_boot_score, X_full, Y, ntotal, _bootQinv, _bootI, nactive, _sqrt_scaling, beta_overall), observed
+
 
 def pairs_bootstrap_score(glm_loss,
                           active, 
@@ -360,12 +362,23 @@ class glm_group_lasso_parametric(M_estimator):
 class glm_group_lasso_epsilon_seq(M_estimator_epsilon_seq):
 
     def setup_sampler(self, scaling=1., solve_args={'min_its': 50, 'tol': 1.e-10}):
-        M_estimator.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+        M_estimator_epsilon_seq.setup_sampler(self, scaling=scaling, solve_args=solve_args)
 
         bootstrap_score = pairs_bootstrap_glm(self.loss,
                                               self.selection_variable['variables'],
                                               beta_full=self._beta_full,
                                               inactive=~self.selection_variable['variables'])[0]
+        return bootstrap_score
+
+class glm_gamsel(M_estimator_gamsel):
+
+    def setup_sampler(self, scaling=1., solve_args={'min_its': 50, 'tol': 1.e-10}):
+        M_estimator_gamsel.setup_sampler(self, scaling=scaling, solve_args=solve_args)
+
+        bootstrap_score = pairs_bootstrap_glm(self.restricted_loss,
+                                              self._restricted_overall,
+                                              beta_full=self._gamma_full,
+                                              inactive=~self._restricted_overall)[0]
 
         return bootstrap_score
 
