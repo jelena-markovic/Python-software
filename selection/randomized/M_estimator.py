@@ -76,7 +76,7 @@ class M_estimator(query):
         # find the active groups and their direction vectors
         # as well as unpenalized groups
 
-        groups = np.unique(penalty.groups) 
+        groups = np.unique(penalty.groups)
         active_groups = np.zeros(len(groups), np.bool)
         unpenalized_groups = np.zeros(len(groups), np.bool)
 
@@ -691,7 +691,15 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
         M_estimator_epsilon_seq.solve(self)
 
         X, _ = self.loss.data
+        restricted_overall = self._overall[self.keep_covariates]
 
+        for X_idx in np.where(~self.keep_covariates)[0]: # leftout covariate
+             if self._overall[X_idx]==True:
+                Z_idx = self.index_map[X_idx]
+                restricted_overall[Z_idx] = True
+
+        print("overall", self._overall)
+        print("restricted overall",restricted_overall)
         restricted_overall = self._overall[self.keep_covariates]
         self._restricted_overall = restricted_overall
         Z, _ = self.restricted_loss.data
@@ -717,9 +725,7 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
         ZX_mat = np.zeros((np.sum(X_inactive), len(Z_inactive_set)))
 
         for i, X_idx in zip(range(np.sum(X_inactive)), np.where(X_inactive)[0]):
-            print(X_idx)
             Z_idx = self.index_map[X_idx]
-            print(Z_idx)
             if Z_idx in set(Z_inactive_set):
                 ZX_mat[i, Z_inactive_set.index(Z_idx)] = 1
 

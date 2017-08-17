@@ -92,26 +92,26 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
     U = np.array(result[2])
     degrees = np.array(result[3])
 
-    # remove X from U: shouldn't be done
-    #keep_indices = np.ones(U.shape[1], np.bool)
+    # remove X from U:
+    #keep_covariates = np.ones(U.shape[1], np.bool)
     #ind = 0
     #for i in range(p):
-    #    keep_indices[ind] = False
+    #    keep_covariates[ind] = False
     #    ind = ind + degrees[i]
-    #U = U[:, keep_indices]
+    #keep_covariates = np.concatenate((np.ones(p+1, np.bool),keep_covariates), axis=0)
 
     V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq))))
 
     intercept = np.ones((n, 1)) / np.sqrt(n)
     X_joint = np.concatenate((intercept, X, V), axis=1)
     p_joint = X_joint.shape[1]
-    print("design dim", p_joint)
+    print("p full", p_joint)
     beta_joint = np.concatenate((beta, np.zeros(p_joint - beta.shape[0])))
 
     lam = lam_frac * np.mean(np.fabs(np.dot(X.T, np.random.standard_normal((n, 1000))))) * sigma
     loss = rr.glm.gaussian(X_joint, y)
     keep_covariates = np.ones(p_joint, np.bool)
-    keep_covariates[1:(p+1)]=0
+    keep_covariates[1:(p+1)] = False
     restricted_loss = rr.glm.gaussian(X_joint[:,keep_covariates],y)
 
     epsilon = 1. / np.sqrt(n)
@@ -223,9 +223,9 @@ def test_gamsel_ci(s=0,
     print("nactive variables", nactive)
     print("active groups", np.where(views[0]._active_groups)[0])
 
-
     nonzero = np.where(beta)[0]
-    true_vec = beta_joint[active_union]
+    beta_restricted = beta_joint[keep_covariates]
+    true_vec = beta_restricted[views[0]._restricted_overall]
 
     if set(nonzero).issubset(np.nonzero(active_union)[0]):
         check_screen=True
@@ -284,7 +284,6 @@ def test_gamsel_ci(s=0,
         #                                       ndraw=ndraw,
         #                                       burnin=burnin,
         #                                       stepsize=None)
-
 
         covered, ci_length = coverage(LU, check_screen, true_vec)
         LU_naive = naive_confidence_intervals(target_sampler, target_observed)
