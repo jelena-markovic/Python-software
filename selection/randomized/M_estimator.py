@@ -690,22 +690,20 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
     def solve(self,  solve_args={'min_its':20, 'tol':1.e-10}):
         M_estimator_epsilon_seq.solve(self)
 
-        X, _ = self.loss.data
         restricted_overall = self._overall[self.keep_covariates]
-
         for X_idx in np.where(~self.keep_covariates)[0]: # leftout covariate
              if self._overall[X_idx]==True:
                 Z_idx = self.index_map[X_idx]
                 restricted_overall[Z_idx] = True
-
         print("overall", self._overall)
         print("restricted overall",restricted_overall)
-        restricted_overall = self._overall[self.keep_covariates]
         self._restricted_overall = restricted_overall
+
+        X, _ = self.loss.data
         Z, _ = self.restricted_loss.data
         Z_overall = Z[:, restricted_overall]
-        W = np.diag(self.loss.saturated_loss.hessian(X.dot(self._beta_full)))
 
+        W = np.diag(self.loss.saturated_loss.hessian(X.dot(self._beta_full)))
         _gamma_unpenalized = restricted_Mest(self.restricted_loss, restricted_overall, solve_args=solve_args)
 
         gamma_full = np.zeros(restricted_overall.shape)
@@ -715,19 +713,19 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
         _score_linear_term, _ = self.score_transform
 
         self.observed_score_state = np.hstack([_gamma_unpenalized,
-                                     -self.restricted_loss.smooth_objective(gamma_full, 'grad')[~restricted_overall]])
+                                    -self.restricted_loss.smooth_objective(gamma_full, 'grad')[~restricted_overall]])
 
         _score_linear_term_restricted = np.zeros((X.shape[1], Z.shape[1]))
         _score_linear_term_restricted[:, :np.sum(restricted_overall)] = np.dot(X.T, W).dot(Z_overall)
 
-        Z_inactive_set = list(np.where(~self._restricted_overall)[0])
-        X_inactive = ~self._overall
-        ZX_mat = np.zeros((np.sum(X_inactive), len(Z_inactive_set)))
+        restricted_inactive_set = list(np.where(~self._restricted_overall)[0])
+        inactive = ~self._overall
+        ZX_mat = np.zeros((np.sum(inactive), len(restricted_inactive_set)))
 
-        for i, X_idx in zip(range(np.sum(X_inactive)), np.where(X_inactive)[0]):
+        for i, X_idx in zip(range(np.sum(inactive)), np.where(inactive)[0]):
             Z_idx = self.index_map[X_idx]
-            if Z_idx in set(Z_inactive_set):
-                ZX_mat[i, Z_inactive_set.index(Z_idx)] = 1
+            if Z_idx in set(restricted_inactive_set):
+                ZX_mat[i, restricted_inactive_set.index(Z_idx)] = 1
 
         _score_linear_term_restricted[:, np.sum(restricted_overall):] = _score_linear_term[:, noverall:].dot(ZX_mat)
 
