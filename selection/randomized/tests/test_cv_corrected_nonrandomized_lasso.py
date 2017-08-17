@@ -2,37 +2,38 @@ import numpy as np
 from scipy.stats import norm as ndist
 import pandas as pd
 import regreg.api as rr
-import selection.api as sel
-from selection.tests.instance import (gaussian_instance, logistic_instance)
-from selection.randomized.glm import (pairs_bootstrap_glm,
-                                      glm_nonparametric_bootstrap)
-from selection.algorithms.lasso import (glm_sandwich_estimator,
-                                        lasso)
-from selection.constraints.affine import (constraints,
-                                          stack)
-from selection.randomized.cv_view import CV_view
+
+from ...tests.instance import (gaussian_instance, logistic_instance)
 import selection.tests.reports as reports
-from selection.tests.flags import SMALL_SAMPLES, SET_SEED
-from selection.tests.decorators import wait_for_return_value, set_seed_iftrue, set_sampling_params_iftrue, register_report
-from selection.randomized.tests.test_cv_lee_et_al import pivot, equal_tailed_interval
+from ...tests.flags import SMALL_SAMPLES, SET_SEED
+from ...tests.decorators import wait_for_return_value, set_seed_iftrue, set_sampling_params_iftrue, register_report
+
+from ...algorithms.lasso import (glm_sandwich_estimator,
+                                        lasso)
+from ..glm import (pairs_bootstrap_glm,
+                                      glm_nonparametric_bootstrap)
+from ...constraints.affine import (constraints,
+                                          stack)
+from ..cv_view import CV_view, have_glmnet
+from .test_cv_lee_et_al import pivot, equal_tailed_interval
 
 @register_report(['pvalue', 'cover', 'ci_length_clt',
                   'naive_pvalues', 'covered_naive', 'ci_length_naive',
                   'active_var'])
 @set_seed_iftrue(SET_SEED)
-@set_sampling_params_iftrue(SMALL_SAMPLES, burnin=10, ndraw=10)
 @wait_for_return_value()
-def test_cv_corrected_nonrandomized_lasso(n=3000,
-                                    p=1000,
-                                    s=10,
-                                    signal = 3.5,
-                                    rho = 0.,
-                                    sigma = 1.,
-                                    K = 5,
-                                    loss="gaussian",
-                                    X = None,
-                                    check_screen=True,
-                                    intervals=False):
+def test_cv_corrected_nonrandomized_lasso(n=300,
+                                          p=100,
+                                          s=3,
+                                          signal=3.5,
+                                          rho=0.,
+                                          sigma=1.,
+                                          K=5,
+                                          loss="gaussian",
+                                          X=None,
+                                          check_screen=True,
+                                          glmnet=True,
+                                          intervals=False):
 
     print (n, p, s, rho)
     if X is not None:
@@ -59,7 +60,7 @@ def test_cv_corrected_nonrandomized_lasso(n=3000,
     cv = CV_view(glm_loss, loss_label=loss, lasso_randomization=None, epsilon=None,
                  scale1=0.01, scale2=0.01)
     # views.append(cv)
-    cv.solve(glmnet=True)
+    cv.solve(glmnet=glmnet and have_glmnet)
     lam_CV_randomized = cv.lam_CVR
     print("minimizer of CVR", lam_CV_randomized)
 
@@ -70,7 +71,6 @@ def test_cv_corrected_nonrandomized_lasso(n=3000,
     L = lasso.gaussian(X, y, lam_CV_randomized)
     L.covariance_estimator = glm_sandwich_estimator(L.loglike, B=2000)
     soln = L.fit()
-
 
     active = soln !=0
     nactive = active.sum()
@@ -86,7 +86,6 @@ def test_cv_corrected_nonrandomized_lasso(n=3000,
         # bootstrap of just coefficients
         return selected_boot(indices)[:active.sum()]
 
-
     if (check_screen==False) or (set(truth).issubset(np.nonzero(active)[0])):
 
         active_set = np.nonzero(active)[0]
@@ -101,7 +100,7 @@ def test_cv_corrected_nonrandomized_lasso(n=3000,
         # covariance of L.constraints is more accurate than cov[0]
         # but estimates the same thing (i.e. more bootstrap replicates)
         A = cov[1].T.dot(np.linalg.pinv(L.constraints.covariance))
-        residual = CV_val_randomized- A.dot(one_step)
+        residual = CV_val_randomized - A.dot(one_step)
 
         # minimizer indicator
 

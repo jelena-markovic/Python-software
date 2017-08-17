@@ -15,3 +15,4 @@ from .glm import (glm_group_lasso,
 
 from .randomization import randomization
 
+from .convenience import lasso
