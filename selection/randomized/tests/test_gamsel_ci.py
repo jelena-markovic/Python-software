@@ -243,9 +243,14 @@ def test_gamsel_ci(s=0,
                                               marginalizing_groups=np.ones(p_joint, bool))
 
         active_set = np.nonzero(active_union)[0]
+        def sampler():
+            indices = np.random.choice(n, size=(n,), replace=True)
+            return (indices, indices)
+
         target_sampler, target_observed = glm_target(views[0].restricted_loss,
                                                      views[0]._restricted_overall,
                                                      queries,
+                                                     sampler,
                                                      bootstrap=False,
                                                      parametric=parametric)
                                                      #reference= beta[active_union])
