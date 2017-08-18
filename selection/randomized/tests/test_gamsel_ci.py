@@ -104,6 +104,7 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
 
     intercept = np.ones((n, 1)) / np.sqrt(n)
     X_joint = np.concatenate((intercept, X, V), axis=1)
+    print("X_joint", X_joint[:2,])
     p_joint = X_joint.shape[1]
     print("p full", p_joint)
     beta_joint = np.concatenate((beta, np.zeros(p_joint - beta.shape[0])))
@@ -165,11 +166,11 @@ def coverage(LU, check_screen, true_vec):
 @wait_for_return_value()
 def test_gamsel_ci(s=0,
                 n=300,
-                p=10,
+                p=5,
                 rho=0.,
                 signal=3.5,
                 lam_frac = 4.,
-                degree = 3,
+                degree = 2,
                 df=2,
                 gamma=0.4,
                 ndraw=10000,
