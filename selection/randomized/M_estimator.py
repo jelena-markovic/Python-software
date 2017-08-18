@@ -749,6 +749,7 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
                                       self.observed_score_state[:np.sum(restricted_overall)])
         s2_restricted = np.dot(_score_linear_term_restricted[:, np.sum(restricted_overall):],
                                         self.observed_score_state[np.sum(restricted_overall):])
+
         print("restricted summand one", s1_restricted)
         print("restricted summand two",s2_restricted)
         print("recovered X^Ty", s1_restricted+s2_restricted)

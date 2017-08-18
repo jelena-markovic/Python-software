@@ -55,9 +55,9 @@ def test_intervals(s=0,
 
     W = lam_frac*np.ones(p)*lam
     # W[0] = 0 # use at least some unpenalized
-    groups = np.concatenate([np.arange(10) for i in range(p/10)])
+    #groups = np.concatenate([np.arange(10) for i in range(p/10)])
     #print(groups)
-    #groups = np.arange(p)
+    groups = np.arange(p)
     penalty = rr.group_lasso(groups,
                              weights=dict(zip(np.arange(p), W)), lagrange=1.)
 
@@ -193,3 +193,7 @@ def report(niter=50, **kwargs):
     fig.savefig('Group_lasso.pdf')
 
 
+
+if __name__ == '__main__':
+    np.random.seed(1)
+    report()
