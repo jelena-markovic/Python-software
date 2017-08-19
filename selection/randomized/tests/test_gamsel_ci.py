@@ -164,10 +164,10 @@ def coverage(LU, check_screen, true_vec):
 @wait_for_return_value()
 def test_gamsel_ci(s=0,
                 n=300,
-                p=5,
+                p=10,
                 rho=0.,
                 signal=3.5,
-                lam_frac = 6.,
+                lam_frac = 5.5,
                 degree = 3,
                 df=2,
                 gamma=0.4,
