@@ -652,23 +652,22 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
         noverall = np.sum(self._overall)
         _score_linear_term, _ = self.score_transform
 
-        print("XTy", np.dot(X.T,y))
+        print("-XTy", -np.dot(X.T,y))
         s1 = np.zeros(X.shape[1])
-        s1[self._overall] = np.dot(X[:,self._overall].T, y)
-        s1[~self._overall] = -self.observed_score_state[np.sum(self._overall):]+np.dot(X[:, ~self._overall].T, y)
+        s1[self._overall] = -np.dot(X[:,self._overall].T, y)
+        s1[~self._overall] = +self.observed_score_state[np.sum(self._overall):]-np.dot(X[:, ~self._overall].T, y)
         print("summand one", s1)
         s2 = np.zeros(X.shape[1])
-        s2[~self._overall] = self.observed_score_state[np.sum(self._overall):]
+        s2[~self._overall] = -self.observed_score_state[np.sum(self._overall):]
         print("summand two", s2)
-        print("X^Ty again", s1+s2)
-
+        print("-X^Ty again", s1+s2)
 
         self.observed_score_state = np.hstack([_gamma_unpenalized,
                                     -self.restricted_loss.smooth_objective(gamma_full, 'grad')[~restricted_overall]])
 
         _score_linear_term_restricted = np.zeros((X.shape[1], Z.shape[1]))
         #print("W", np.diag(W))
-        _score_linear_term_restricted[:, :np.sum(restricted_overall)] = np.dot(X.T, W).dot(Z_overall)
+        _score_linear_term_restricted[:, :np.sum(restricted_overall)] = -np.dot(X.T, W).dot(Z_overall)
 
         #temp = _score_linear_term_restricted[:, :np.sum(restricted_overall)]
         #print("X_E^Ty", temp.dot(self.observed_score_state[:np.sum(self._restricted_overall)]))
@@ -680,10 +679,9 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
         for i, X_idx in zip(range(np.sum(inactive)), np.where(inactive)[0]):
             Z_idx = self.index_map[X_idx]
             if Z_idx in set(restricted_inactive_set):
-                   ZX_mat[i, restricted_inactive_set.index(Z_idx)] = 2*int(self.keep_covariates[X_idx])-1
+                   ZX_mat[i, restricted_inactive_set.index(Z_idx)] = 1 #2*int(self.keep_covariates[X_idx])-1
 
-        _score_linear_term_restricted[:, np.sum(restricted_overall):] = -_score_linear_term[:, noverall:].dot(ZX_mat)
-
+        _score_linear_term_restricted[:, np.sum(restricted_overall):] = _score_linear_term[:, noverall:].dot(ZX_mat)
 
         s1_restricted = np.dot(_score_linear_term_restricted[:,:np.sum(restricted_overall)],
                                       self.observed_score_state[:np.sum(restricted_overall)])
@@ -692,7 +690,7 @@ class M_estimator_gamsel(M_estimator_epsilon_seq):
 
         print("restricted summand one", s1_restricted)
         print("restricted summand two",s2_restricted)
-        print("recovered X^Ty", s1_restricted+s2_restricted)
+        print("recovered -X^Ty", s1_restricted+s2_restricted)
 
 
         self.score_transform = (_score_linear_term_restricted, self.score_transform[1])

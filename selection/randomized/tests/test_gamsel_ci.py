@@ -92,12 +92,11 @@ def setup_gamsel(s, n, p, rho, signal, lam_frac,
     degrees = np.array(result[3])
 
     # remove X from U:
-    #keep_covariates = np.ones(U.shape[1], np.bool)
-    #ind = 0
-    #for i in range(p):
-    #    keep_covariates[ind] = False
-    #    ind = ind + degrees[i]
-    #keep_covariates = np.concatenate((np.ones(p+1, np.bool),keep_covariates), axis=0)
+    ind = 0
+    for i in range(p):
+        if U[0,ind]*X[0,i]<0:
+            U[:, ind]=-U[:, ind]
+        ind = ind + degrees[i]
 
     V = np.dot(U, np.diag(np.true_divide(1., np.sqrt(D_star_seq))))
 
@@ -168,8 +167,8 @@ def test_gamsel_ci(s=0,
                 p=5,
                 rho=0.,
                 signal=3.5,
-                lam_frac = 4.,
-                degree = 2,
+                lam_frac = 6.,
+                degree = 3,
                 df=2,
                 gamma=0.4,
                 ndraw=10000,
