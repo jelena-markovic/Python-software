@@ -44,7 +44,7 @@ def coverage(LU, true_vec, check_screen):
         ci_length[j] = U[j] - L[j]
     return covered, ci_length
 
-def compute_true_vec(get_data_easy, active, nsim=100):
+def compute_true_vec(get_data_easy, active, nsim=2000):
     _beta_unpenalized = np.zeros(np.sum(active))
     for i in range(nsim):
         glm_loss = get_data_easy()
@@ -68,16 +68,16 @@ def get_data(loss_label, n, p, s, rho, signal, sigma, X):
 @set_sampling_params_iftrue(SMALL_SAMPLES, ndraw=10, burnin=10)
 @set_seed_iftrue(SET_SEED)
 @wait_for_return_value()
-def test_marginalize(s=30,
-                    n=400,
-                    p=8000,
+def test_marginalize(s=0,
+                    n=100,
+                    p=20,
                     rho=0.,
                     signal=5.,
                     sigma=1.,
                     lam_frac = 1.,
                     X = None,
                     ndraw=10000,
-                    burnin=2000,
+                    burnin=1000,
                     loss_label='gaussian',
                     randomizer = 'gaussian',
                     randomizer_scale = 1.,
@@ -86,7 +86,7 @@ def test_marginalize(s=30,
                     subgrad =True,
                     parametric=True,
                     intervals='old',
-                    check_screen=False):
+                    check_screen=True):
     print(n,p,s)
 
     if randomizer == 'laplace':
@@ -134,12 +134,11 @@ def test_marginalize(s=30,
     nonzero = np.where(beta)[0]
 
     get_data_easy = functools.partial(get_data, loss_label, n, p, s, rho, signal, sigma, X)
-    start = start = timeit.default_timer()
-    true_vec = compute_true_vec(get_data_easy, active_union)
-    stop = timeit.default_timer()
-    print("computing true vec time", stop - start)
-    print("true vec",true_vec)
-    #true_vec = beta[active_union]
+    #start = start = timeit.default_timer()
+    #true_vec = compute_true_vec(get_data_easy, active_union)
+    #stop = timeit.default_timer()
+    #print("computing true vec time", stop - start)
+    true_vec = beta[active_union]
 
     if set(nonzero).issubset(active_set) or check_screen==False:
 
@@ -170,18 +169,17 @@ def test_marginalize(s=30,
             stop = timeit.default_timer()
             print("sampling time", stop - start)
             start = timeit.default_timer()
-            LU = target_sampler.confidence_intervals(target_observed,
-                                                     sample=target_sample,
-                                                     level=0.9)
-            stop = timeit.default_timer()
-            print("confidence intervals time", stop - start)
-            start = timeit.default_timer()
             pivots = target_sampler.coefficient_pvalues(target_observed,
                                                         parameter=true_vec,
                                                         sample=target_sample)
             stop = timeit.default_timer()
             print("pivots time", stop - start)
-
+            start = timeit.default_timer()
+            LU = target_sampler.confidence_intervals(target_observed,
+                                                     sample=target_sample,
+                                                     level=0.9)
+            stop = timeit.default_timer()
+            print("confidence intervals time", stop - start)
         elif intervals=='new':
             full_sample = target_sampler.sample(ndraw=ndraw,
                                                 burnin=burnin,
@@ -213,8 +211,8 @@ def test_marginalize(s=30,
 
 def report(niter, outfile, **kwargs):
     rho = 0
-    n = 400
-    p = 8000
+    n = 100
+    p = 20
     X = (np.sqrt(1 - rho) * np.random.standard_normal((n, p)) +
                    np.sqrt(rho) * np.random.standard_normal(n)[:, None])
 

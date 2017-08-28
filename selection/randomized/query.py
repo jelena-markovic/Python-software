@@ -1079,7 +1079,6 @@ class targeted_sampler_opt(targeted_sampler):
         -------
         gradient : np.float
         '''
-        print("here")
         if stepsize is None:
             # stepsize = 1. / self.crude_lipschitz()
             print("1 over the length of the observed", self.observed_state.shape[0])
@@ -1098,6 +1097,131 @@ class targeted_sampler_opt(targeted_sampler):
             if (i >= burnin):
                 samples.append(target_langevin.state.copy())
         return np.asarray(samples)
+
+    def confidence_intervals(self,
+                             observed_target,
+                             ndraw=10000,
+                             burnin=2000,
+                             stepsize=None,
+                             sample=None,
+                             level=0.9):
+
+        '''
+        Parameters
+        ----------
+        observed : np.float
+            A vector of parameters with shape `self.shape`,
+            representing coordinates of the target.
+        ndraw : int
+            How long a chain to return?
+        burnin : int
+            How many samples to discard?
+        stepsize : float
+            Stepsize for Langevin sampler. Defaults
+            to a crude estimate based on the
+            dimension of the problem.
+        sample : np.array (optional)
+            If not None, assumed to be a sample of shape (-1,) + `self.shape`
+            representing a sample of the target from parameters `self.reference`.
+            Allows reuse of the same sample for construction of confidence
+            intervals, hypothesis tests, etc.
+        level : float (optional)
+            Specify the
+            confidence level.
+        Notes
+        -----
+        Construct selective confidence intervals
+        for each parameter of the target.
+        Returns
+        -------
+        intervals : [(float, float)]
+            List of confidence intervals.
+        '''
+
+        if sample is None:
+            sample = self.sample(ndraw, burnin, stepsize=stepsize, keep_opt=True)
+
+        _intervals = opt_weighted_intervals(self,
+                                          sample,
+                                          observed_target)
+
+        limits = []
+
+        for i in range(observed_target.shape[0]):
+            print("ci", i)
+            keep = np.zeros_like(observed_target)
+            keep[i] = 1.
+            limits.append(_intervals.confidence_interval(keep, level=level))
+
+        return np.array(limits)
+
+
+    def coefficient_pvalues(self,
+                            observed_target,
+                            parameter=None,
+                            ndraw=10000,
+                            burnin=2000,
+                            stepsize=None,
+                            sample=None,
+                            alternative='twosided'):
+        '''
+        Parameters
+        ----------
+        observed : np.float
+           A vector of parameters with shape `self.shape`,
+           representing coordinates of the target.
+        parameter : np.float (optional)
+           A vector of parameters with shape `self.shape`
+           at which to evaluate p-values. Defaults
+           to `np.zeros(self.shape)`.
+        ndraw : int
+           How long a chain to return?
+        burnin : int
+           How many samples to discard?
+        stepsize : float
+           Stepsize for Langevin sampler. Defaults
+           to a crude estimate based on the
+           dimension of the problem.
+        sample : np.array (optional)
+            If not None, assumed to be a sample of shape (-1,) + `self.shape`
+            representing a sample of the target from parameters `self.reference`.
+            Allows reuse of the same sample for construction of confidence
+            intervals, hypothesis tests, etc.
+        alternative : ['greater', 'less', 'twosided']
+            What alternative to use.
+        Returns
+        -------
+        pvalues : np.float
+            P values for each coefficient.
+
+        '''
+
+        if alternative not in ['greater', 'less', 'twosided']:
+            raise ValueError("alternative should be one of ['greater', 'less', 'twosided']")
+
+        if sample is None:
+            sample = self.sample(ndraw, burnin, stepsize=stepsize, keep_opt=True)
+
+        if parameter is None:
+            parameter = np.zeros_like(observed_target)
+
+        _intervals = opt_weighted_intervals(self,
+                                     sample,
+                                     observed_target)
+
+        pvalues = []
+
+        for i in range(observed_target.shape[0]):
+            keep = np.zeros_like(observed_target)
+            keep[i] = 1.
+
+            _parameter = self.reference.copy()
+            _parameter[i] = parameter[i]
+            pvalues.append(_intervals.pivot(keep,
+                                        _parameter,
+                                        alternative=alternative))
+
+        return np.array(pvalues)
 
 
 class bootstrapped_target_sampler(targeted_sampler):
@@ -1363,18 +1487,19 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         self.targeted_sampler = targeted_sampler
         self.observed = observed.copy() # this is our observed unpenalized estimator
         nactive = targeted_sampler.observed_target_state.shape[0]
-        self.normal_sample = np.zeros((sample.shape[0], nactive))
-        for i in range(targeted_sampler.observed_target_state.shape[0]):
-                self.normal_sample[:,i] = np.random.normal(0, targeted_sampler.target_cov[i,i], size=sample.shape[0])
 
-        self._logden = targeted_sampler.log_randomization_density(np.concatenate((sample, \
-                          np.tile(targeted_sampler.observed_target_state,(sample.shape[0],1))), axis=1))
+        self.normal_sample = np.random.multivariate_normal(mean=np.zeros(nactive), cov=targeted_sampler.target_cov, size =(sample.shape[0]))
+        print(self.normal_sample.shape)
+        self._sample = np.concatenate((sample, \
+                    np.tile(targeted_sampler.observed_target_state, (sample.shape[0], 1))), axis=1)
 
-        self._delta = np.concatenate((sample,self.normal_sample), axis=1)
+        self._logden = targeted_sampler.log_randomization_density(self._sample)
+
+        self._delta = np.concatenate((sample, self.normal_sample), axis=1)
         #self._delta[:, targeted_sampler.target_slice] -= targeted_sampler.reference[None, :]
 
     def pivot(self,
-              test_statistic,
+              linear_func,
               candidate,
               alternative='twosided'):
         '''
@@ -1383,18 +1508,15 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         Returns
         -------
         pvalue : np.float
-
         '''
 
         if alternative not in ['greater', 'less', 'twosided']:
             raise ValueError("alternative should be one of ['greater', 'less', 'twosided']")
 
-        observed_delta = self.observed - candidate
-        observed_stat = test_statistic(observed_delta)
+        observed_stat = self.targeted_sampler.observed_target_state.dot(linear_func)
 
-        candidate_sample, weights = self._weights(candidate)
-        #sample_stat = np.array([test_statistic(s) for s in candidate_sample[:, self.targeted_sampler.target_slice]])
-        sample_stat = np.array([test_statistic(s) for s in self._delta[:, self.targeted_sampler.target_slice]])
+        candidate_sample, weights = self._weights(linear_func, candidate)
+        sample_stat = np.array([linear_func.dot(s) for s in candidate_sample[:, self.targeted_sampler.target_slice]])
 
         pivot = np.mean((sample_stat <= observed_stat) * weights) / np.mean(weights)
 
@@ -1405,28 +1527,28 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         else:
             return 1 - pivot
 
-    def confidence_interval(self, linear_func, level=0.95, how_many_sd=20):
+    def confidence_interval(self, linear_func, level=0.90, how_many_sd=20):
 
         target_delta = self._delta[:,self.targeted_sampler.target_slice]
         projected_delta = target_delta.dot(linear_func)
         projected_observed = self.observed.dot(linear_func)
+        std_projected_delta = np.sqrt(np.dot(linear_func.T, self.targeted_sampler.target_cov).dot(linear_func))
 
         delta_min, delta_max = projected_delta.min(), projected_delta.max()
 
         _norm = np.linalg.norm(linear_func)
         grid_min, grid_max = -how_many_sd * np.std(projected_delta), how_many_sd * np.std(projected_delta)
-
-        reference = self.targeted_sampler.reference
+        print("grid", grid_min, grid_max)
 
         def _rootU(gamma):
-            return self.pivot(lambda x: linear_func.dot(x),
-                              reference + gamma * linear_func / _norm**2,
+            return self.pivot(linear_func,
+                              projected_observed + gamma * linear_func / _norm**2,
                               alternative='less') - (1 - level) / 2.
 
 
         def _rootL(gamma):
-            return self.pivot(lambda x: linear_func.dot(x),
-                              reference + gamma * linear_func / _norm**2,
+            return self.pivot(linear_func,
+                              projected_observed + gamma * linear_func / _norm**2,
                               alternative='less') - (1 + level) / 2.
 
         upper = bisect(_rootU, grid_min, grid_max, xtol=1.e-5*(grid_max - grid_min))
@@ -1436,10 +1558,19 @@ class opt_weighted_intervals(object): # intervals_from_sample):
 
     # Private methods
 
-    def _weights(self, candidate):
+    def _weights(self, linear_func, candidate):
 
-        candidate_sample = self._delta.copy()
-        candidate_sample[:, self.targeted_sampler.target_slice] += candidate[None, :]
+        candidate_sample = self._sample.copy()
+
+        _norm = np.linalg.norm(linear_func)
+        projection_matrix = np.true_divide(np.dot(linear_func, linear_func.T), _norm**2)
+        residual_matrix = np.identity(linear_func.shape[0])-projection_matrix
+        candidate_sample[:, self.targeted_sampler.target_slice] = \
+            self._sample[:, self.targeted_sampler.target_slice].dot(residual_matrix)
+
+        candidate_sample[:, self.targeted_sampler.target_slice] += \
+            (self.normal_sample+np.ones(self.normal_sample.shape)*candidate).dot(projection_matrix)
+
         _lognum = self.targeted_sampler.log_randomization_density(candidate_sample)
 
         _logratio = _lognum - self._logden
