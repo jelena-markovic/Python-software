@@ -190,7 +190,8 @@ class intervals_from_sample(object):
         linear_func = np.atleast_1d(linear_func)
         stdev = np.sqrt(np.sum(linear_func * self.covariance.dot(linear_func)))
         #grid = np.linspace(-300*stdev, 300*stdev, 30000) + (self.reference * linear_func).sum()
-        grid = np.linspace(-50, 50, 10000) #+ (self.reference * linear_func).sum()
+        grid = np.linspace(-20* stdev, 20*stdev, 200) + (self.reference * linear_func).sum()
+        print("grid", grid[0], grid[grid.shape[0]-1])
         #print(self.observed.dot(linear_func), 300*stdev)
 
         pivots_at_grid = [self._pivot_param(linear_func, grid[i])

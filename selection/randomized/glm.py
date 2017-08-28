@@ -219,7 +219,8 @@ def target(loss,
            bootstrap=False,
            solve_args={'min_its':50, 'tol':1.e-10},
            reference=None,
-           parametric=False):
+           parametric=False,
+           opt=False):
     """
     Form target from self.loss
     restricting to active variables.
@@ -320,7 +321,8 @@ def target(loss,
         target_sampler = queries.setup_target(_target,
                                               target_observed,
                                               reference=reference,
-                                              parametric=parametric)
+                                              parametric=parametric,
+                                              opt=opt)
 
     return target_sampler, target_observed
 

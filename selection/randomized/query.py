@@ -260,7 +260,8 @@ class multiple_queries(object):
                      observed_target_state,
                      reference=None,
                      target_set=None,
-                     parametric=False):
+                     parametric=False,
+                     opt = None):
 
         '''
         Parameters
@@ -293,6 +294,15 @@ class multiple_queries(object):
         '''
 
         self.setup_opt_state()
+
+        if opt:
+            return targeted_sampler_opt(self,
+                                    target_info,
+                                    observed_target_state,
+                                    self.form_covariances,
+                                    target_set=target_set,
+                                    reference=reference,
+                                    parametric=parametric)
 
         return targeted_sampler(self,
                                 target_info,
@@ -561,6 +571,8 @@ class targeted_sampler(object):
         samples = []
 
         for i in range(ndraw + burnin):
+            if i % 1000==0:
+                print("MC step", i)
             target_langevin.next()
             if (i >= burnin):
                 samples.append(target_langevin.state[keep_slice].copy())
@@ -997,6 +1009,97 @@ class targeted_sampler(object):
 
         return np.array(pvalues)
 
+
+class targeted_sampler_opt(targeted_sampler):
+    def __init__(self,
+                 multi_view,
+                 target_info,
+                 observed_target_state,
+                 form_covariances,
+                 reference=None,
+                 target_set=None,
+                 parametric=False):
+
+        targeted_sampler.__init__(self,
+                                  multi_view,
+                                  target_info,
+                                  observed_target_state,
+                                  form_covariances,
+                                  reference=reference,
+                                  target_set=target_set,
+                                  parametric=parametric)
+
+        self.observed_state = np.zeros(multi_view.num_opt_var)
+        self.observed_state[self.overall_opt_slice] = multi_view.observed_opt_state
+
+    def gradient(self, state):
+        '''
+        Gradient of log-density at current state.
+        Parameters
+        ----------
+        state : np.float
+            State of sampler made up of `(target, opt_vars)`.
+        Returns
+        -------
+        gradient : np.float
+        '''
+
+        opt_state =  state[self.overall_opt_slice]
+        opt_grad = np.zeros_like(opt_state)
+
+        # randomization_gradient are gradients of a CONVEX function
+
+        for i in range(self.nqueries):
+            _, opt_grad[self.opt_slice[i]] = \
+                self.objectives[i].randomization_gradient(self.observed_target_state, self.target_transform[i],
+                                                          opt_state[self.opt_slice[i]])
+
+        return -opt_grad
+
+    def sample(self, ndraw, burnin, stepsize=None):
+        '''
+        Sample `target` from selective density
+        using projected Langevin sampler with
+        gradient map `self.gradient` and
+        projection map `self.projection`.
+        Parameters
+        ----------
+        ndraw : int
+            How long a chain to return?
+        burnin : int
+            How many samples to discard?
+        stepsize : float
+            Stepsize for Langevin sampler. Defaults
+            to a crude estimate based on the
+            dimension of the problem.
+        keep_opt : bool
+            Should we return optimization variables
+            as well as the target?
+        Returns
+        -------
+        gradient : np.float
+        '''
+        print("here")
+        if stepsize is None:
+            # stepsize = 1. / self.crude_lipschitz()
+            print("1 over the length of the observed", self.observed_state.shape[0])
+            stepsize = 1. / self.observed_state.shape[0]
+
+        target_langevin = projected_langevin(self.observed_state.copy(),
+                                                 self.gradient,
+                                                 self.projection,
+                                                 stepsize)
+        samples = []
+
+        for i in range(ndraw + burnin):
+            if i % 1000 == 0:
+                print("MC step", i)
+            target_langevin.next()
+            if (i >= burnin):
+                samples.append(target_langevin.state.copy())
+        return np.asarray(samples)
+
+
 class bootstrapped_target_sampler(targeted_sampler):
 
     # make one of these for each hypothesis test
@@ -1231,5 +1334,118 @@ class translate_intervals(object): # intervals_from_sample):
         _logratio -= _logratio.max()
 
         return candidate_sample, np.exp(_logratio)
+
+
+
+class opt_weighted_intervals(object): # intervals_from_sample):
+
+    """
+    Location family based intervals... (cryptic)
+    randomization density should be `g` composed with the affine
+    mapping and take an argument like one row of sample
+    target_linear is the linear part of the affine mapping with
+    respect to target
+    weights for a given candidate will look like
+          randomization_density(sample + (candidate, 0, 0) - (reference, 0, 0)) /
+          randomization_density(sample)
+    if the samples are samples of \bar{\beta}. if we have samples of
+    \Delta from our reference, then the weights will look like
+    randomization_density(sample + (candidate, 0, 0))
+    randomization_density(sample + (reference, 0, 0))
+    WE ARE ASSUMING sample is sampled from targeted_sampler.reference
+    """
+
+    def __init__(self,
+                 targeted_sampler,
+                 sample,
+                 observed):
+
+        self.targeted_sampler = targeted_sampler
+        self.observed = observed.copy() # this is our observed unpenalized estimator
+        nactive = targeted_sampler.observed_target_state.shape[0]
+        self.normal_sample = np.zeros((sample.shape[0], nactive))
+        for i in range(targeted_sampler.observed_target_state.shape[0]):
+                self.normal_sample[:,i] = np.random.normal(0, targeted_sampler.target_cov[i,i], size=sample.shape[0])
+
+        self._logden = targeted_sampler.log_randomization_density(np.concatenate((sample, \
+                          np.tile(targeted_sampler.observed_target_state,(sample.shape[0],1))), axis=1))
+
+        self._delta = np.concatenate((sample,self.normal_sample), axis=1)
+        #self._delta[:, targeted_sampler.target_slice] -= targeted_sampler.reference[None, :]
+
+    def pivot(self,
+              test_statistic,
+              candidate,
+              alternative='twosided'):
+        '''
+        alternative : ['greater', 'less', 'twosided']
+            What alternative to use.
+        Returns
+        -------
+        pvalue : np.float
+
+        '''
+
+        if alternative not in ['greater', 'less', 'twosided']:
+            raise ValueError("alternative should be one of ['greater', 'less', 'twosided']")
+
+        observed_delta = self.observed - candidate
+        observed_stat = test_statistic(observed_delta)
+
+        candidate_sample, weights = self._weights(candidate)
+        #sample_stat = np.array([test_statistic(s) for s in candidate_sample[:, self.targeted_sampler.target_slice]])
+        sample_stat = np.array([test_statistic(s) for s in self._delta[:, self.targeted_sampler.target_slice]])
+
+        pivot = np.mean((sample_stat <= observed_stat) * weights) / np.mean(weights)
+
+        if alternative == 'twosided':
+            return 2 * min(pivot, 1 - pivot)
+        elif alternative == 'less':
+            return pivot
+        else:
+            return 1 - pivot
+
+    def confidence_interval(self, linear_func, level=0.95, how_many_sd=20):
+
+        target_delta = self._delta[:,self.targeted_sampler.target_slice]
+        projected_delta = target_delta.dot(linear_func)
+        projected_observed = self.observed.dot(linear_func)
+
+        delta_min, delta_max = projected_delta.min(), projected_delta.max()
+
+        _norm = np.linalg.norm(linear_func)
+        grid_min, grid_max = -how_many_sd * np.std(projected_delta), how_many_sd * np.std(projected_delta)
+
+        reference = self.targeted_sampler.reference
+
+        def _rootU(gamma):
+            return self.pivot(lambda x: linear_func.dot(x),
+                              reference + gamma * linear_func / _norm**2,
+                              alternative='less') - (1 - level) / 2.
+
+
+        def _rootL(gamma):
+            return self.pivot(lambda x: linear_func.dot(x),
+                              reference + gamma * linear_func / _norm**2,
+                              alternative='less') - (1 + level) / 2.
+
+        upper = bisect(_rootU, grid_min, grid_max, xtol=1.e-5*(grid_max - grid_min))
+        lower = bisect(_rootL, grid_min, grid_max, xtol=1.e-5*(grid_max - grid_min))
+
+        return lower + projected_observed, upper + projected_observed
+
+    # Private methods
+
+    def _weights(self, candidate):
+
+        candidate_sample = self._delta.copy()
+        candidate_sample[:, self.targeted_sampler.target_slice] += candidate[None, :]
+        _lognum = self.targeted_sampler.log_randomization_density(candidate_sample)
+
+        _logratio = _lognum - self._logden
+        _logratio -= _logratio.max()
+
+        return candidate_sample, np.exp(_logratio)
+
 
 
