@@ -1208,17 +1208,14 @@ class targeted_sampler_opt(targeted_sampler):
         _intervals = opt_weighted_intervals(self,
                                      sample,
                                      observed_target)
-
         pvalues = []
 
         for i in range(observed_target.shape[0]):
             keep = np.zeros_like(observed_target)
             keep[i] = 1.
 
-            _parameter = self.reference.copy()
-            _parameter[i] = parameter[i]
             pvalues.append(_intervals.pivot(keep,
-                                        _parameter,
+                                        parameter[i],
                                         alternative=alternative))
 
         return np.array(pvalues)
@@ -1496,7 +1493,6 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         self._logden = targeted_sampler.log_randomization_density(self._sample)
 
         self._delta = np.concatenate((sample, self.normal_sample), axis=1)
-        #self._delta[:, targeted_sampler.target_slice] -= targeted_sampler.reference[None, :]
 
     def pivot(self,
               linear_func,
@@ -1516,6 +1512,7 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         observed_stat = self.targeted_sampler.observed_target_state.dot(linear_func)
 
         candidate_sample, weights = self._weights(linear_func, candidate)
+        print("candidate", candidate)
         sample_stat = np.array([linear_func.dot(s) for s in candidate_sample[:, self.targeted_sampler.target_slice]])
 
         pivot = np.mean((sample_stat <= observed_stat) * weights) / np.mean(weights)
@@ -1542,13 +1539,11 @@ class opt_weighted_intervals(object): # intervals_from_sample):
 
         def _rootU(gamma):
             return self.pivot(linear_func,
-                              projected_observed + gamma * linear_func / _norm**2,
+                              projected_observed + gamma,
                               alternative='less') - (1 - level) / 2.
-
-
         def _rootL(gamma):
             return self.pivot(linear_func,
-                              projected_observed + gamma * linear_func / _norm**2,
+                              projected_observed + gamma,
                               alternative='less') - (1 + level) / 2.
 
         upper = bisect(_rootU, grid_min, grid_max, xtol=1.e-5*(grid_max - grid_min))
@@ -1566,7 +1561,7 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         projection_matrix = np.true_divide(np.dot(linear_func, linear_func.T), _norm**2)
         residual_matrix = np.identity(linear_func.shape[0])-projection_matrix
         candidate_sample[:, self.targeted_sampler.target_slice] = \
-            self._sample[:, self.targeted_sampler.target_slice].dot(residual_matrix)
+            candidate_sample[:, self.targeted_sampler.target_slice].dot(residual_matrix)
 
         candidate_sample[:, self.targeted_sampler.target_slice] += \
             (self.normal_sample+np.ones(self.normal_sample.shape)*candidate).dot(projection_matrix)
@@ -1574,7 +1569,7 @@ class opt_weighted_intervals(object): # intervals_from_sample):
         _lognum = self.targeted_sampler.log_randomization_density(candidate_sample)
 
         _logratio = _lognum - self._logden
-        _logratio -= _logratio.max()
+        #_logratio -= _logratio.max()
 
         return candidate_sample, np.exp(_logratio)
 
